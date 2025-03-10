@@ -1,0 +1,390 @@
+---
+title: "Figure6"
+author: "Athena Golfinos-Owens"
+date: "2025-01-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(edgeR)
+library(cowplot)
+library(readxl)
+library(pheatmap)
+library(RColorBrewer)
+library(ComplexHeatmap)
+library(circlize)
+
+knitr::opts_chunk$set(echo = TRUE)
+
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path)) 
+
+# Print the current working directory (optional, for verification) 
+print(getwd())
+```
+
+```{r Fig 6a--CD68 and CD45 volcano plots by response }
+# Set working directory
+setwd("/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames")
+
+# Load annotation data (if needed later)
+ann_cd45 <- readxl::read_excel('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/inputs/GSE226134_CD45_10__norm (1).xlsx')
+ann_cd68 <- readxl::read_excel('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/inputs/GSE226134_CD68_10__norm.xlsx')
+ann_ck <- readxl::read_excel('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/inputs/GSE226134_CK_10__norm.xlsx')
+
+# Load GeoMx data
+t <- readRDS("/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/NanoStringGeoMxSet_objects/raw_Yale_geomx.RDS")
+e <- exprs(t)
+log <- log2(e+1)
+test <- fData(t)
+p <- pData(t)
+
+volcano_plot <- function(geomx_data, segment_label, plot_title, genes_to_label = NULL) {
+  library(edgeR)
+  library(limma)
+  library(ggplot2)
+  library(dplyr)
+  library(ggrepel)
+
+  # Extract expression data and metadata
+  e <- exprs(geomx_data)
+  test_data <- fData(geomx_data)
+  test2 <- pData(geomx_data)
+  test2 <- test2[which(test2$SegmentLabel %in% c("Segment 1", 'Segment 2')),]
+
+  # Filter data for the specified segment
+  segment_data <- test2 %>%
+    filter(grepl(segment_label, segment))
+
+  # Subset the expression matrix for the current segment
+  segment_expr <- e[, rownames(segment_data)]
+
+  # Create DGEList object
+  dge <- DGEList(counts = segment_expr, genes = test_data)
+
+  # Filter low expressed genes
+  keep <- filterByExpr(dge, group = segment_data$CLINICAL_BENEFIT)
+  dge <- dge[keep, , keep.lib.sizes=FALSE]
+
+  # Normalize and apply voom transformation
+  dge <- calcNormFactors(dge)
+  design <- model.matrix(~CLINICAL_BENEFIT, data = segment_data)
+  v <- voom(dge, design = design, plot = FALSE)
+
+  # Fit linear model
+  fit <- lmFit(v, design = design)
+  fit <- eBayes(fit)
+
+  # Extract results
+  res <- topTable(fit, coef = 2, number = Inf)
+  res$TargetName <- test_data$TargetName[match(rownames(res), test_data$RTS_ID)]
+
+  # Define significant genes and enrichment labels
+  res$significance <- ifelse((abs(res$logFC) > 0.5 | -log10(res$P.Value) > -log10(0.05)),
+                             ifelse(res$logFC > 0, "YES-enriched", "NO-enriched"),
+                             "Not Significant")
+
+  # Mark genes to be labeled
+  res$to_label <- res$TargetName %in% genes_to_label
+
+  # Volcano plot
+  p <- ggplot(res, aes(x = logFC, y = -log10(P.Value))) +
+    geom_point(aes(color = significance), alpha = 0.8) +
+    scale_color_manual(values = c("YES-enriched" = "red", "NO-enriched" = "blue", "Not Significant" = "grey", "Genes of Interest" = "green4"),
+                       name = "Group enrichment") +
+    geom_vline(xintercept = c(-0.5, 0.5), linetype = "dashed") +
+    geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
+    labs(title = plot_title, x = "Log2 Fold Change", y = "-Log10(P-value)") +
+    theme_bw() +
+    theme(legend.position = "right")
+
+  # Add labels and color for specified genes
+  if (!is.null(genes_to_label)) {
+    p <- p +
+      geom_point(data = subset(res, to_label), aes(color = "Genes of Interest"), size = 3) +
+      geom_text_repel(
+        data = subset(res, to_label),
+        aes(label = TargetName),
+        color = "green4",
+        fontface = "bold",
+        size = 3,
+        box.padding = unit(0.7, "lines"),
+        point.padding = unit(0.5, "lines"),
+        force = 10,
+        max.overlaps = Inf,
+        min.segment.length = 0,
+        seed = 42
+      )
+  }
+
+  return(p)
+}
+
+
+
+
+
+
+
+
+# Create volcano plots for CD68 and CD45
+cd68_volcano <- volcano_plot(geomx_data = t, segment_label = "Segment 1", plot_title = "Volcano Plot - CD68", genes_to_label = c('CXCL9', 'CXCL10', 'CXCL16', 'CCL5', 'CCL4', 'CCL3', 'IL16', 'IL11', 'CCL19', 'CCL21', 'CCL13', 'CCL2', 'CCL8', 'CXCL12', 'IL1B', 'IL1A', 'CCL15'))
+cd45_volcano <- volcano_plot(t, "Segment 2", "Volcano Plot - CD45", genes_to_label = c('CXCR3', 'CXCR6', 'CCR5', 'CD4', 'IL11RA', 'CCR7', 'CCR1', 'CCR2', 'CXCR4', 'IL1R2', 'IL1R1', 'CXCL9', 'CXCL10', 'CXCL16', 'CCL5', 'CCL4', 'CCL3', 'IL16', 'IL11', 'CCL19', 'CCL21', 'CCL13', 'CCL2', 'CCL8', 'CXCL12', 'IL1B', 'IL1A', 'CCL15'))
+
+# Print or save the plots
+pdf('Yale_GeoMx_CD68_Ligands_of_Interest.pdf', width = 6, height = 5)
+print(cd68_volcano)
+dev.off()
+
+pdf('Yale_GeoMx_CD45_Ligand_Receptors_of_Interest.pdf', width = 6, height = 5)
+print(cd45_volcano)
+dev.off()
+
+```
+
+```{r Fig 6b--ROI ID ONLY Yale GeoMx boxplot}
+
+# Set working directory
+setwd("/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames")
+
+# Load annotation data
+ann_cd45 <- readxl::read_excel('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/inputs/GSE226134_CD45_10__norm (1).xlsx')
+ann_cd68 <- readxl::read_excel('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/inputs/GSE226134_CD68_10__norm.xlsx')
+ann_ck <- readxl::read_excel('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/inputs/GSE226134_CK_10__norm.xlsx')
+
+# Load GeoMx data
+t <- readRDS("/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/NanoStringGeoMxSet_objects/raw_Yale_geomx.RDS")
+e <- exprs(t)
+log <- log2(e+1)
+test <- fData(t)
+
+# Get the gene names from the GeoMx dataset
+geomx_genes <- unique(test$TargetName)
+
+average_expression_analysis <- function(geomx_data, ligand_genes, receptor_genes, plot_title) {
+  # Extract expression data and metadata
+  e <- exprs(geomx_data)
+  log_data <- log2(e + 1)
+  test_data <- fData(geomx_data)
+  test2 <- pData(geomx_data)
+  test2 <- test2[which(test2$SegmentLabel %in% c("Segment 1", 'Segment 2')),]
+
+  # Create a mapping between RTS_ID and TargetName
+  gene_mapping <- setNames(test_data$RTS_ID, test_data$TargetName)
+
+  # Replace RTS_IDs with TargetNames in log_data
+  rownames(log_data) <- test_data$TargetName[match(rownames(log_data), test_data$RTS_ID)]
+
+  # Ensure genes are present in the GeoMx data
+  available_ligand_genes <- intersect(ligand_genes, rownames(log_data))
+  available_receptor_genes <- intersect(receptor_genes, rownames(log_data))
+
+  if (length(available_ligand_genes) == 0 || length(available_receptor_genes) == 0) {
+    warning("No overlapping genes found between input lists and GeoMx data.")
+    return(NULL)
+  }
+
+  # Convert log data to a data frame for easier manipulation
+  expression_df <- as.data.frame(t(log_data))
+  expression_df$Sample_ID <- rownames(expression_df)
+
+  # Merge expression data with metadata
+  merged_data <- merge(test2, expression_df, by.x = "row.names", by.y = "Sample_ID")
+
+  # Filter for CD68 and CD45 segments
+  cd68_data <- merged_data %>%
+    filter(grepl("CD68", `aoi cell type`))
+
+  cd45_data <- merged_data %>%
+    filter(grepl("CD45", `aoi cell type`))
+
+  # Calculate average expression for ligand genes in CD68
+  cd68_data$Ligand_Avg <- rowMeans(cd68_data[, available_ligand_genes, drop = FALSE], na.rm = TRUE)
+
+  # Calculate average expression for receptor genes in CD45
+  cd45_data$Receptor_Avg <- rowMeans(cd45_data[, available_receptor_genes, drop = FALSE], na.rm = TRUE)
+
+  # Aggregate by date of birth
+  cd68_agg <- cd68_data %>%
+    group_by(ROIID, CLINICAL_BENEFIT) %>%
+    summarise(Avg_Ligand_Score = mean(Ligand_Avg, na.rm = TRUE))
+
+  cd45_agg <- cd45_data %>%
+    group_by(ROIID, CLINICAL_BENEFIT) %>%
+    summarise(Avg_Receptor_Score = mean(Receptor_Avg, na.rm = TRUE))
+
+  # Merge aggregated data
+  merged_agg <- merge(cd68_agg, cd45_agg, by = c("ROIID", "CLINICAL_BENEFIT"))
+
+  # Prepare data for faceting
+  plot_data <- rbind(
+    merged_agg %>% select(ROIID, CLINICAL_BENEFIT, Score = Avg_Ligand_Score) %>% mutate(Type = "Ligand (CD68)"),
+    merged_agg %>% select(ROIID, CLINICAL_BENEFIT, Score = Avg_Receptor_Score) %>% mutate(Type = "Receptor (CD45)")
+  )
+  
+  p <- ggplot(plot_data, aes(x = CLINICAL_BENEFIT, y = Score, color = CLINICAL_BENEFIT, fill = CLINICAL_BENEFIT)) +
+    geom_boxplot(position = position_dodge(), alpha = 0.5, outlier.color = NA) +
+    geom_point(alpha = 0.8, position = position_jitterdodge()) +
+    facet_wrap(~ Type, scales = 'free_y', nrow = 1) +
+    stat_compare_means(method = "wilcox.test", label = "p.format", label.y = max(plot_data$Score) * 1.1) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          strip.text = element_text(size = 12),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          legend.key.size = unit(1, 'cm'),
+          legend.title = element_text(size=20),
+          legend.text = element_text(size=16),
+          axis.text=element_text(size=14),
+          axis.title=element_text(size=20),
+          legend.position = 'right') +
+    scale_color_manual(values = c('#2196F3', '#FF8A80')) +
+    scale_fill_manual(values = c('#2196F3', '#FF8A80')) +
+    labs(y = "Expression", x = "Clinical Benefit") +
+    ggtitle(plot_title)
+
+  return(p)
+
+}
+
+
+# Example Usage:
+ligand_genes <- c('CXCL9', 'CXCL10', 'CXCL16') # Example ligand genes
+receptor_genes <- c('CXCR3', 'CXCR6') # Example receptor genes
+
+# Call the function
+final_plot_cxcl <- average_expression_analysis(geomx_data = t, ligand_genes = ligand_genes, receptor_genes = receptor_genes, plot_title = "CXCL9/10/16 (CD68), CXCR3/6 (CD45)")
+final_plot_cxcl
+ggsave('CXCL9_10_16_CXCR3_6_AverageExpression_boxplot.pdf')
+
+final_plot_ccl_il1 <- average_expression_analysis(geomx_data = t, ligand_genes = c('IL1B', 'CCL4', 'CCL3', 'CCL13'), receptor_genes = c('IL1R1', 'IL1R2', 'CCR5', 'CCR1'), plot_title = "IL1B/CCL4/3/13 (CD68), IL1R1/2/CCR5/1 (CD45)")
+final_plot_ccl_il1
+ggsave('IL1B_CCL3_4_13_IL1R1_2_CCR5_1_AverageExpression_boxplot.pdf')
+
+final_plot_ccl_il2 <- average_expression_analysis(geomx_data = t, ligand_genes = c('IL16', 'IL11', 'CCL19', 'CCL21'), receptor_genes = c('CCR7', 'CD4', 'IL11RA'), plot_title = "IL16/11/CCL19/21 (CD68), CCR7/CD4/IL11RA (CD45)")
+final_plot_ccl_il2
+ggsave('IL16_11_CCL19_21_CCR7_CD4_IL11RA_AverageExpression_boxplot.pdf', width = 7, height = 7)
+
+# Save the plot
+#ggsave("AverageExpression_boxplot.pdf", final_plot, width = 12, height = 6)
+
+
+
+
+
+
+
+
+
+
+
+# individual gene plots
+# Define your ligand-receptor pairs
+lr_pairs <- list(
+  c('CXCL9', 'CXCR3'),
+  c('CXCL10', 'CXCR3'),
+  c('CXCL16', 'CXCR6'),
+  c('CCL5', 'CCR5'),
+  c('IL16', 'CD4'),
+  c('IL11', 'IL11RA'),
+  c('CCL19', 'CCR7'),
+  c('CCL21', 'CCR7'),
+  c('CCL4', 'CCR5'),
+  c('CCL3', 'CCR5'),
+  c('CCL13', 'CCR1'),
+  c('CCL3', 'CCR1'),
+  c('CCL2', 'CCR2'),
+  c('CCL8', 'CCR1'),
+  c('CCL8', 'CCR2'),
+  c('CXCL12', 'CXCR4'),
+  c('IL1B', 'IL1R2'),
+  c('IL1B', 'IL1R1'),
+  c('IL1A', 'IL1R2'),
+  c('CCL5', 'CCR1'),
+  c('CCL15', 'CCR1')
+)
+
+# Loop through each ligand-receptor pair
+for (pair in lr_pairs) {
+  ligand_gene <- pair[1]
+  receptor_gene <- pair[2]
+  
+  # Generate plot title
+  plot_title <- paste0(ligand_gene, " (CD68), ", receptor_gene, " (CD45)")
+  
+  # Create the plot
+  final_plot <- average_expression_analysis(
+    geomx_data = t, 
+    ligand_genes = ligand_gene, 
+    receptor_genes = receptor_gene, 
+    plot_title = plot_title
+  )
+  
+  # Display the plot
+  print(final_plot)
+  
+  # Generate file name for saving
+  file_name <- paste0(ligand_gene, "_", receptor_gene, "_AverageExpression_boxplot.pdf")
+  
+  # Save the plot
+ # ggsave(file_name, plot = final_plot)
+}
+
+```
+
+```{r Fig 6c--Cristescu/Litchfield}
+# Read and filter data
+litch <- readr::read_delim('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Using_Litchfield_Data/meta_analysis_input_data.txt')
+litch <- litch[litch$study == 'CRISTESCU_SCIENCE_2018' & litch$histology == 'HEAD AND NECK', ]
+
+# Reshape data for faceting
+litch_long <- litch %>%
+  select(CXCL9, CD274, response) %>%
+  pivot_longer(cols = c(CXCL9, CD274), names_to = "gene", values_to = "expression")
+
+# Calculate p-values
+wilcox_tests <- litch_long %>%
+  group_by(gene) %>%
+  summarize(p_value = wilcox.test(expression ~ response)$p.value) %>%
+  mutate(subtitle = paste("p =", round(p_value, digits = 5)))
+
+# Create the plot
+p <- ggplot(litch_long, aes(x = response, y = expression, color = response, fill = response)) +
+  geom_boxplot(position = position_dodge(), alpha = 0.5, outlier.color = NA) +
+  geom_point(alpha = 0.8, position = position_jitterdodge()) +
+  facet_grid(. ~ gene, scales = "free_y") +
+  theme_bw() +
+  scale_fill_manual(values = c('#2196F3', '#FF8A80')) +
+  scale_color_manual(values = c('#2196F3', '#FF8A80')) +
+  theme(
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 14),
+    axis.text = element_text(size = 14),
+    axis.title = element_text(size = 16),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    strip.text = element_text(size = 18),
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5, size = 18),
+    plot.subtitle = element_text(hjust = 0.5, size = 16)
+  ) +
+  labs(y = "Expression") +
+  geom_text(
+    data = wilcox_tests,
+    aes(x = Inf, y = Inf, label = subtitle),
+    hjust = 1, vjust = 1,
+    inherit.aes = FALSE,
+    size = 4
+  )
+
+# Save the plot
+pdf('Cristescu_CXCL9_CD274_faceted.pdf', width = 6, height = 4)
+print(p)
+dev.off()
+
+```
+
+
