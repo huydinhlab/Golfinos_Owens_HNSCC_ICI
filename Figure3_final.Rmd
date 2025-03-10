@@ -1,0 +1,1768 @@
+---
+title: "Figure3"
+author: "Athena Golfinos-Owens"
+date: "2024-12-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(CellChat)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggrepel)
+library(tibble)
+library(grid)
+library(tidyverse)
+library(UpSetR)
+library(ComplexUpset)
+library(grDevices)
+library(ggvenn)
+library(VennDiagram)
+library(RColorBrewer)
+library(Seurat)
+library(purrr)
+library(stringr)
+library(ggalluvial)
+library(ggnewscale)
+
+# load in relevant workspaces
+load('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/all_cellchat_objs.rda')
+load('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/bill_luoma_consensus.rda')
+workspace_files <- list.files("/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_individual_patients_workspaces", 
+                              pattern = "workspace\\.rda$", full.names = TRUE)
+```
+
+```{r Preparation--running CellChat}
+# cellchat on Luoma--consensus myeloid and T clusters
+DimPlot(luoma, group.by = 'consensus_clusters')
+
+process_cellchat <- function(seu1, out, path_response, meta, tx_stage = NULL) {
+  
+  require(CellChat)
+  require(future)
+  require(Seurat)
+  
+  # Filter seu1 by tx_stage if provided
+  if (!is.null(tx_stage)) {
+    seu1 <- seu1[, seu1$Stage == tx_stage]
+  }
+  
+  # Filter seu1 by path_response
+  seu <- seu1[, seu1$response_binary %in% path_response]
+  
+  # Set cell identities
+  Idents(seu) <- meta
+  
+  # Create CellChat object
+  cellchat <- createCellChat(seu)
+  CellChatDB <- CellChatDB.human 
+  CellChatDB.use <- CellChatDB # use the default CellChatDB
+  cellchat@DB <- CellChatDB.use # set the used database in the object
+  
+  # Subset data
+  cellchat <- subsetData(cellchat)
+  
+  # Parallel processing
+  future::plan("multisession", workers = 4)
+  
+  # Identify over and under expressed genes/interactions
+  cellchat <- identifyOverExpressedGenes(cellchat)
+  cellchat <- identifyOverExpressedInteractions(cellchat)
+  
+  # Compute communication probability
+  cellchat <- computeCommunProb(cellchat)
+  
+  # Filter out communication if very few cells in certain cell groups
+  cellchat <- filterCommunication(cellchat, min.cells = 10)
+  
+  # Compute communication probability pathway
+  cellchat <- computeCommunProbPathway(cellchat)
+  
+  # Aggregate network
+  cellchat <- aggregateNet(cellchat)
+  
+  # Save objects
+  if(!is.null(tx_stage)){
+    save(cellchat, seu1, seu, CellChatDB, CellChatDB.use, file = paste(out, tx_stage, '_', path_response, '_grouped_cellchat_objects.rda', sep = ''))
+  }
+  
+  if(is.null(tx_stage)){
+    save(cellchat, seu1, seu, CellChatDB, CellChatDB.use, file = paste(out, path_response, '_grouped_cellchat_objects.rda', sep = ''))
+  }
+  
+  # return cellchat object
+  return(cellchat)
+}
+
+
+nr_pre_cellchat <- process_cellchat(luoma, out = '/Volumes/hqdinh2/Lab Manuscripts/HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/', 
+                                meta = 'consensus_clusters', path_response = 'Non-responder', tx_stage = 'Pre-Tx')
+nr_post_cellchat <- process_cellchat(luoma, out = '/Volumes/hqdinh2/Lab Manuscripts/HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/', 
+                                meta = 'consensus_clusters', path_response = 'Non-responder', tx_stage = 'Post-Tx')
+
+r_pre_cellchat <- process_cellchat(luoma, out = '/Volumes/hqdinh2/Lab Manuscripts/HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/', 
+                                meta = 'consensus_clusters', path_response = 'Responder', tx_stage = 'Pre-Tx')
+r_post_cellchat <- process_cellchat(luoma, out = '/Volumes/hqdinh2/Lab Manuscripts/HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/', 
+                                   meta = 'consensus_clusters', path_response = 'Responder', tx_stage = 'Post-Tx')
+
+
+
+# determine if there are subsets not present in all objects so we can remove them
+all_levels <- unique(c(levels(r_pre_cellchat@idents),
+                       levels(nr_pre_cellchat@idents), 
+                       levels(r_post_cellchat@idents), 
+                       levels(nr_post_cellchat@idents)))
+
+cell_order1 <- levels(r_pre_cellchat@idents) 
+cell_order2 <- levels(nr_pre_cellchat@idents) 
+cell_order3 <- levels(r_post_cellchat@idents) 
+cell_order4 <- levels(nr_post_cellchat@idents) 
+
+cell_order <- intersect(cell_order1, cell_order2)
+cell_order <- intersect(cell_order, cell_order3)
+cell_order <- intersect(cell_order, cell_order4)
+
+print(setdiff(all_levels, cell_order))
+# character(0)
+
+
+# establishing the same cell subset order before merging
+r_pre_cellchat <- CellChat::updateClusterLabels(r_pre_cellchat, new.order = cell_order) %seed% TRUE
+nr_pre_cellchat <- CellChat::updateClusterLabels(nr_pre_cellchat, new.order = cell_order) %seed% TRUE
+r_post_cellchat <- CellChat::updateClusterLabels(r_post_cellchat, new.order = cell_order) %seed% TRUE
+nr_post_cellchat <- CellChat::updateClusterLabels(nr_post_cellchat, new.order = cell_order) %seed% TRUE
+
+# merging together the pre-tx (R and NR) and post-tx (R and NR)
+pre.object.list <- list(NR = nr_pre_cellchat, R = r_pre_cellchat)
+pre.cellchat <- mergeCellChat(pre.object.list, add.names = names(pre.object.list))
+post.object.list <- list(NR = nr_post_cellchat, R = r_post_cellchat)
+post.cellchat <- mergeCellChat(post.object.list, add.names = names(post.object.list))
+
+
+#save(pre.cellchat, post.cellchat, r_pre_cellchat, nr_pre_cellchat, r_post_cellchat, nr_post_cellchat, pre.object.list, post.object.list, 
+#     file = '/Volumes/hqdinh2/Lab Manuscripts/HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/all_cellchat_objs.rda')
+
+```
+
+```{r Fig 3b--rank plots}
+# keeping track of the subsets that we do/don't want to include
+send <- grep('Mac|Mon|DC', levels(pre.cellchat@idents$joint), value = T)
+rec <- grep('CD4|CD8|Treg|Tcells', levels(pre.cellchat@idents$joint), value = T)
+
+# non-responder pre-treatment
+nr_pre <- as.data.frame(nr_pre_cellchat@net$count) %>% 
+  rownames_to_column() 
+nr_pre <- nr_pre[grep('Mac|Mon|DC', nr_pre$rowname), grep('CD4|CD8|Treg|Tcells|rowname', colnames(nr_pre))]
+nr_pre <- nr_pre %>%
+  pivot_longer(cols = 2:ncol(nr_pre), names_to = 'receiver', values_to = 'NR_pre_prob') #%>%
+  #rename(sender = rowname)
+nr_pre$SR <- paste(nr_pre$rowname, nr_pre$receiver, sep = '_')
+
+# non-responder post-treatment
+nr_post <- as.data.frame(nr_post_cellchat@net$count) %>% 
+  rownames_to_column()
+nr_post <- nr_post[grep('Mac|Mon|DC', nr_post$rowname), grep('CD4|CD8|Treg|Tcells|rowname', colnames(nr_post))]
+nr_post <- nr_post %>%
+  pivot_longer(cols = 2:ncol(nr_post), names_to = 'receiver', values_to = 'NR_post_prob') #%>%
+  #rename(sender = rowname)
+nr_post$SR <- paste(nr_post$rowname, nr_post$receiver, sep = '_')
+
+# Responder pre-treatment
+r_pre <- as.data.frame(r_pre_cellchat@net$count) %>% 
+  rownames_to_column()
+r_pre <- r_pre[grep('Mac|Mon|DC', r_pre$rowname), grep('CD4|CD8|Treg|Tcells|rowname', colnames(r_pre))]
+r_pre <- r_pre %>%
+  pivot_longer(cols = 2:ncol(r_pre), names_to = 'receiver', values_to = 'R_pre_prob') #%>%
+  #rename(sender = rowname)
+r_pre$SR <- paste(r_pre$rowname, r_pre$receiver, sep = '_')
+
+# Responder post-treatment
+r_post <- as.data.frame(r_post_cellchat@net$count) %>% 
+  rownames_to_column()
+r_post <- r_post[grep('Mac|Mon|DC', r_post$rowname), grep('CD4|CD8|Treg|Tcells|rowname', colnames(r_post))]
+r_post <- r_post %>%
+  pivot_longer(cols = 2:ncol(r_post), names_to = 'receiver', values_to = 'R_post_prob') #%>%
+  #rename(sender = rowname)
+r_post$SR <- paste(r_pre$rowname, r_pre$receiver, sep = '_')
+
+
+
+# merge down to two objects and calculate log2FC and rank
+pre <- merge(r_pre, nr_pre, by = 'SR') %>%
+  mutate(log2FC = log2(R_pre_prob/NR_pre_prob)) %>%
+  arrange(desc(log2FC)) 
+post <- merge(r_post, nr_post, by = 'SR')  %>%
+  mutate(log2FC = log2(R_post_prob/NR_post_prob)) %>%
+  arrange(desc(log2FC)) 
+
+
+# Create a color column
+pre$color_group <- case_when(
+  pre$log2FC > 0.2 ~ "R_enriched",
+  pre$log2FC < -0.2 ~ "NR_enriched",
+  TRUE ~ "Unchanged"
+)
+
+post$color_group <- case_when(
+  post$log2FC > 0.2 ~ "R_enriched",
+  post$log2FC < -0.2 ~ "NR_enriched",
+  TRUE ~ "Unchanged"
+)
+
+pre <- pre[pre$log2FC != Inf,]
+post <- post[post$log2FC != Inf,]
+
+pre <- pre %>%
+  mutate(rank = row_number())
+post <- post %>%
+  mutate(rank = row_number())
+
+
+
+# Define colors for senders and receivers
+sender_colors <- c("mregDC_LAMP3" = "#DC050C", "Mac_CXCL9" = "#FB8072", 'Blood-like_CD14_Mono' = "#1965B0",
+                   'Mac_IL1B' = "#7BAFDE", 'cDC2_CD33' = "#882E72", 'Mac_IL1Bint' = "#B17BA6", #'CD16_Mono' = "#FF7F00", 
+                   'cDC2_CD1C' = "#FDB462", 'cDC1_CLEC9A' = "#E7298A", 'Mono_TIL' = "#E78AC3", 'DC_pDC' = "#8600BF")
+receiver_colors <- c("ITGAE_CD8" = "#33A02C", "CXCL13_Tcells" = "#B2DF8A", 'Tregs' = "#55A1B1", 'GZMK_CD8' = "#8DD3C7", 
+                     'IL7R_CD4' = "#7570B3", 'NR4A2_CD8' = "#BEAED4")
+
+# Create the base plot with all points--post-treatment
+
+create_label_grob <- function(sender, receiver, sender_color, receiver_color) {
+  min_width <- 8 # Set a minimum width for the rectangles
+  grobTree(
+    rectGrob(gp = gpar(fill = receiver_color, col = NA), width = unit(min_width / 2, "npc"), height = unit(1, "lines"), just = "left"),
+    rectGrob(gp = gpar(fill = sender_color, col = NA), x = unit(0.5, "npc"), width = unit(min_width / 2, "npc"), height = unit(1, "lines"), just = "right")
+  )
+}
+p <- ggplot(pre, aes(x = rank, y = log2FC)) +
+  # Add white dots for points outside -0.2 and 0.2
+  geom_point(data = subset(pre, log2FC < -0.2 | log2FC > 0.2), 
+             color = "white", size = 2) +
+  # Add black dots for points between -0.2 and 0.2
+  geom_point(data = subset(pre, log2FC >= -0.2 & log2FC <= 0.2), 
+             color = "black", size = 1) +
+  theme_classic() +
+  labs(title = "Pre-ICB",
+       x = "CCI rank", y = "log2FC(R/NR count)") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 28),
+        legend.position = "none", axis.text = element_text(size = 12),
+        axis.title = element_text(size = 18, face = "bold"))
+
+# Add custom annotations for log2FC > 0.2 or log2FC < -0.2
+significant_points <- subset(pre, log2FC > 0.2 | log2FC < -0.2)
+
+for (i in 1:nrow(significant_points)) {
+  label_grob <- create_label_grob(
+    significant_points$rowname.x[i],
+    significant_points$receiver.x[i],
+    sender_colors[significant_points$rowname.x[i]],
+    receiver_colors[significant_points$receiver.x[i]]
+  )
+  
+  p <- p + annotation_custom(
+    grob = label_grob,
+    xmin = significant_points$rank[i] - 0.75,  # Increased width of annotation
+    xmax = significant_points$rank[i] + 0.75,
+    ymin = significant_points$log2FC[i] - 0.2,
+    ymax = significant_points$log2FC[i] + 0.2
+  )
+}
+
+# Add horizontal lines at y = 0.2 and y = -0.2
+p <- p + geom_hline(yintercept = c(-0.2, 0.2), linetype = "dashed", color = "grey")
+
+# Add legends for sender and receiver colors with correct order and appearance
+p <- p + scale_color_manual(name = "Sender", 
+                            values = sender_colors, 
+                            breaks = names(sender_colors),
+                            guide = guide_legend(order = 1, 
+                                                 override.aes = list(shape = 21, 
+                                                                     size = 5, 
+                                                                     fill = NA))) +
+  scale_fill_manual(name = "Receiver", 
+                    values = receiver_colors, 
+                    breaks = names(receiver_colors),
+                    guide = guide_legend(order = 2, 
+                                         override.aes = list(shape = 21, 
+                                                             size = 5, 
+                                                             color = NA)))
+
+# Adjust legend appearance and layout
+p <- p + theme(
+  legend.key = element_rect(colour = NA),
+  legend.key.size = unit(1.2, "cm"),
+  legend.text = element_text(size = 14),
+  legend.title = element_text(size = 16, face = "bold"),
+  legend.position = "none",
+  legend.box = "vertical",
+  legend.margin = margin(t = 0, r = 0, b = 0, l = 0),
+  legend.box.margin = margin(0, 0, 0, 0),
+  legend.spacing.x = unit(0, 'cm'),
+  legend.spacing.y = unit(0, 'cm'),
+  plot.margin = margin(t = 5, r = 5, b = 25, l = 5, unit = "pt")
+)
+
+# Adjust the guide for sender legend to use two rows, keep receiver legend as one row
+p <- p + guides(
+  color = guide_legend(nrow = 2, byrow = TRUE, order = 1, 
+                       override.aes = list(shape = 21, 
+                                           size = 6,
+                                           fill = NA)),
+  fill = guide_legend(nrow = 1, byrow = TRUE, order = 2,
+                      override.aes = list(shape = 21, 
+                                          size = 6,
+                                          color = NA))
+)
+
+# Save the plot
+pdf('PreTx_srlr_rankplot.pdf', width = 5.5, height = 5.5)
+print(p)
+dev.off()
+
+
+
+
+
+
+
+
+
+
+
+sender_colors <- c("mregDC_LAMP3" = "#DC050C", "Mac_CXCL9" = "#FB8072", 'Blood-like_CD14_Mono' = "#1965B0",
+                   'Mac_IL1B' = "#7BAFDE", 'cDC2_CD33' = "#882E72", 'Mac_IL1Bint' = "#B17BA6", 'CD16_Mono' = "#FF7F00", 
+                   'cDC2_CD1C' = "#FDB462", 'cDC1_CLEC9A' = "#E7298A", 'Mono_TIL' = "#E78AC3", 'DC_pDC' = "#8600BF")
+receiver_colors <- c("ITGAE_CD8" = "#33A02C", "CXCL13_Tcells" = "#B2DF8A", 'Tregs' = "#55A1B1", 'GZMK_CD8' = "#8DD3C7", 
+                     'IL7R_CD4' = "#7570B3", 'NR4A2_CD8' = "#BEAED4")
+create_label_grob <- function(sender, receiver, sender_color, receiver_color) {
+  min_width <- 8 # Set a minimum width for the rectangles
+  grobTree(
+    rectGrob(gp = gpar(fill = receiver_color, col = NA), width = unit(min_width / 2, "npc"), height = unit(1, "lines"), just = "left"),
+    rectGrob(gp = gpar(fill = sender_color, col = NA), x = unit(0.5, "npc"), width = unit(min_width / 2, "npc"), height = unit(1, "lines"), just = "right")
+  )
+}
+p <- ggplot(post, aes(x = rank, y = log2FC)) +
+  # Add white dots for points outside -0.2 and 0.2
+  geom_point(data = subset(post, log2FC < -0.2 | log2FC > 0.2), 
+             color = "white", size = 2) +
+  # Add black dots for points between -0.2 and 0.2
+  geom_point(data = subset(post, log2FC >= -0.2 & log2FC <= 0.2), 
+             color = "black", size = 1) +
+  theme_classic() +
+  labs(title = "Post-ICB",
+       x = "CCI rank", y = "log2FC(R/NR count)") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 28),
+        legend.position = "none", axis.text = element_text(size = 12),
+        axis.title = element_text(size = 18, face = "bold"))
+
+# Add custom annotations for log2FC > 0.2 or log2FC < -0.2
+significant_points <- subset(post, log2FC > 0.2 | log2FC < -0.2)
+
+for (i in 1:nrow(significant_points)) {
+  label_grob <- create_label_grob(
+    significant_points$rowname.x[i],
+    significant_points$receiver.x[i],
+    sender_colors[significant_points$rowname.x[i]],
+    receiver_colors[significant_points$receiver.x[i]]
+  )
+  
+  p <- p + annotation_custom(
+    grob = label_grob,
+    xmin = significant_points$rank[i] - 0.75,  # Increased width of annotation
+    xmax = significant_points$rank[i] + 0.75,
+    ymin = significant_points$log2FC[i] - 0.2,
+    ymax = significant_points$log2FC[i] + 0.2
+  )
+}
+
+# Add horizontal lines at y = 0.2 and y = -0.2
+p <- p + geom_hline(yintercept = c(-0.2, 0.2), linetype = "dashed", color = "grey")
+
+# Add legends for sender and receiver colors with correct order and appearance
+p <- p + scale_color_manual(name = "Sender", 
+                            values = sender_colors, 
+                            breaks = names(sender_colors),
+                            guide = guide_legend(order = 1, 
+                                                 override.aes = list(shape = 21, 
+                                                                     size = 5, 
+                                                                     fill = NA))) +
+  scale_fill_manual(name = "Receiver", 
+                    values = receiver_colors, 
+                    breaks = names(receiver_colors),
+                    guide = guide_legend(order = 2, 
+                                         override.aes = list(shape = 21, 
+                                                             size = 5, 
+                                                             color = NA)))
+
+# Adjust legend appearance and layout
+p <- p + theme(
+  legend.key = element_rect(colour = NA),
+  legend.key.size = unit(1.2, "cm"),
+  legend.text = element_text(size = 14),
+  legend.title = element_text(size = 16, face = "bold"),
+  legend.position = "none",
+  legend.box = "vertical",
+  legend.margin = margin(t = 0, r = 0, b = 0, l = 0),
+  legend.box.margin = margin(0, 0, 0, 0),
+  legend.spacing.x = unit(0, 'cm'),
+  legend.spacing.y = unit(0, 'cm'),
+  plot.margin = margin(t = 5, r = 5, b = 25, l = 5, unit = "pt")
+)
+
+# Adjust the guide for sender legend to use two rows, keep receiver legend as one row
+p <- p + guides(
+  color = guide_legend(nrow = 2, byrow = TRUE, order = 1, 
+                       override.aes = list(shape = 21, 
+                                           size = 6,
+                                           fill = NA)),
+  fill = guide_legend(nrow = 1, byrow = TRUE, order = 2,
+                      override.aes = list(shape = 21, 
+                                          size = 6,
+                                          color = NA))
+)
+
+# Save the plot
+pdf('PostTx_srlr_rankplot.pdf', width = 5.5, height = 5.5)
+print(p)
+dev.off()
+```
+
+```{r Fig 3c--UpSet plots}
+#combined upset plots
+create_combined_upset_plot <- function(cellchat, sender, target, group1, group2, desired_order, output_file) {
+  library(dplyr)
+  library(ComplexHeatmap)
+  library(UpSetR)
+  
+  # Extract and prepare the interaction data for each group
+  cellchat_count_group1 <- subsetCommunication(cellchat, sources.use = sender, targets.use = target)[[group1]] %>% 
+    select(c('target', 'ligand', 'receptor'))
+  cellchat_count_group2 <- subsetCommunication(cellchat, sources.use = sender, targets.use = target)[[group2]] %>% 
+    select(c('target', 'ligand', 'receptor'))
+  
+  # Create interaction string without the target/receiver
+  cellchat_count_group1$interaction <- paste(cellchat_count_group1$ligand, cellchat_count_group1$receptor, sep = '->')
+  cellchat_count_group2$interaction <- paste(cellchat_count_group2$ligand, cellchat_count_group2$receptor, sep = '->')
+  
+  # Create a list of interactions for each receiver
+  interaction_list1 <- split(cellchat_count_group1$interaction, cellchat_count_group1$target)
+  interaction_list2 <- split(cellchat_count_group2$interaction, cellchat_count_group2$target)
+  
+  # Filter out sets with a list length of zero
+  interaction_list1 <- interaction_list1[sapply(interaction_list1, length) > 0]
+  interaction_list2 <- interaction_list2[sapply(interaction_list2, length) > 0]
+  
+  # Append group IDs to the set names
+  names(interaction_list1) <- paste(names(interaction_list1), group1, sep = "_")
+  names(interaction_list2) <- paste(names(interaction_list2), group2, sep = "_")
+  
+  # Combine the interaction lists
+  combined_interaction_list <- c(interaction_list1, interaction_list2)
+  
+  # Create a combination matrix
+  comb_mat_combined <- make_comb_mat(combined_interaction_list)
+  
+  # Filter out empty columns (those with no intersection size)
+  non_empty_columns <- comb_degree(comb_mat_combined) > 0
+  comb_mat_combined_filtered <- comb_mat_combined[, non_empty_columns]
+  
+  # Create a custom color vector based on the set combinations
+  intersection_colors <- sapply(seq_len(ncol(comb_mat_combined_filtered)), function(i) {
+    sets_in_comb <- rownames(comb_mat_combined_filtered)[comb_mat_combined_filtered[,i] == 1]
+    r_sets <- sum(grepl("_R$", sets_in_comb))
+    nr_sets <- sum(grepl("_NR$", sets_in_comb))
+    
+    if (r_sets > 0 && nr_sets == 0) {
+      return("#B71C1C")  # Color for "_R" only
+    } else if (nr_sets > 0 && r_sets == 0) {
+      return('#2196F3')  # Color for "_NR" only
+    } else if (r_sets > 0 && nr_sets > 0) {
+      return("grey20")  # Color for both
+    } else {
+      return("grey50")  # Default color
+    }
+  })
+  
+  # Generate the UpSet plot
+  tryCatch({
+    grDevices::pdf(output_file, width = 6, height = 4)
+    print(UpSet(comb_mat_combined_filtered, 
+                pt_size = unit(5, "mm"), 
+                lwd = 3, 
+                comb_col = intersection_colors, 
+                bg_col = c("grey90", "grey100"), 
+                bg_pt_col = "grey70",
+                set_order = desired_order))
+  }, finally = {
+    grDevices::dev.off()
+  })
+  
+  # Check if the file was created successfully
+  if (file.exists(output_file) && file.size(output_file) > 4096) {
+    message("PDF file created successfully: ", output_file)
+  } else {
+    warning("PDF file creation may have failed or file is too small: ", output_file)
+  }
+  
+  # Sanity check: Create a table of the number of interactions per set
+  interactions_per_set <- sapply(combined_interaction_list, length)
+  interactions_table <- data.frame(
+    Set = names(interactions_per_set),
+    Number_of_Interactions = interactions_per_set
+  )
+  
+  # Sanity check: Get contributing interactions for each set
+  contributing_interactions <- lapply(names(combined_interaction_list), function(set_name) {
+    data.frame(
+      Set = set_name,
+      Interaction = combined_interaction_list[[set_name]]
+    )
+  })
+  contributing_interactions <- do.call(rbind, contributing_interactions)
+  
+  # Sanity check: Get intersections and their sizes
+  intersections <- comb_size(comb_mat_combined_filtered)
+  intersection_sizes <- data.frame(
+    Intersection = names(intersections),
+    Size = intersections
+  )
+  
+  # Create a list of returned objects
+  returned_objects <- list(
+    interactions_table = interactions_table,
+    contributing_interactions = contributing_interactions,
+    intersection_sizes = intersection_sizes,
+    comb_mat = comb_mat_combined_filtered, 
+    combined_interaction_list = combined_interaction_list
+  )
+  
+  # Return the list of objects
+  return(returned_objects)
+}
+
+
+# Example usage
+original_receivers = c('IL7R_CD4', 'ITGAE_CD8', 'GZMK_CD8', 'NR4A2_CD8', 'CXCL13_Tcells', 'Tregs')
+
+# Duplicate the vector and append "_R" and "_NR"
+receivers_R <- paste(original_receivers, "_R", sep = "")
+receivers_NR <- paste(original_receivers, "_NR", sep = "")
+
+# Combine and rearrange the order
+combined_receivers <- c(receivers_NR, receivers_R)
+
+mono_post <- create_combined_upset_plot(cellchat = post.cellchat, 
+                           sender = 'Blood-like_CD14_Mono',
+                           target = unique(grep('CD4|CD8|Tcells|Tregs', post.cellchat@meta$consensus_clusters, value = T)), 
+                           group1 = "NR", 
+                           group2 = "R", 
+                           desired_order = combined_receivers, 
+                           output_file = "post_tx_bloodlike_cd14_mono_combined_UpsetPlot.pdf")
+mono_pre <- create_combined_upset_plot(cellchat = pre.cellchat, 
+                                        sender = 'Blood-like_CD14_Mono',
+                                        target = unique(grep('CD4|CD8|Tcells|Tregs', pre.cellchat@meta$consensus_clusters, value = T)), 
+                                        group1 = "NR", 
+                                        group2 = "R", 
+                                        desired_order = combined_receivers, 
+                                        output_file = "pre_tx_bloodlike_cd14_mono_combined_UpsetPlot.pdf")
+```
+
+```{r Fig 3d--Non-responder specific pre-treatment}
+original_receivers = c('IL7R_CD4', 'ITGAE_CD8', 'GZMK_CD8', 'NR4A2_CD8', 'CXCL13_Tcells', 'Tregs')
+
+# Duplicate the vector and append "_R" and "_NR"
+receivers_R <- paste(original_receivers, "_R", sep = "")
+receivers_NR <- paste(original_receivers, "_NR", sep = "")
+
+# Combine and rearrange the order
+combined_receivers <- c(receivers_NR, receivers_R)
+
+# Assuming nr_pre_cellchat, nr_post_cellchat, r_pre_cellchat, r_post_cellchat are already loaded
+
+# Subset communications
+nr_pre <- CellChat::subsetCommunication(nr_pre_cellchat, 
+                                        sources.use = 'Blood-like_CD14_Mono', 
+                                        targets.use = c('GZMK_CD8', 'Tregs', 'NR4A2_CD8', 'ITGAE_CD8', 'IL7R_CD4', 'CXCL13_Tcells'))
+
+nr_post <- CellChat::subsetCommunication(nr_post_cellchat, 
+                                         sources.use = 'Blood-like_CD14_Mono', 
+                                         targets.use = c('GZMK_CD8', 'Tregs', 'NR4A2_CD8', 'ITGAE_CD8', 'IL7R_CD4', 'CXCL13_Tcells'))
+
+r_pre <- CellChat::subsetCommunication(r_pre_cellchat, 
+                                       sources.use = 'Blood-like_CD14_Mono', 
+                                       targets.use = c('GZMK_CD8', 'Tregs', 'NR4A2_CD8', 'ITGAE_CD8', 'IL7R_CD4', 'CXCL13_Tcells'))
+
+r_post <- CellChat::subsetCommunication(r_post_cellchat, 
+                                        sources.use = 'Blood-like_CD14_Mono', 
+                                        targets.use = c('GZMK_CD8', 'Tregs', 'NR4A2_CD8', 'ITGAE_CD8', 'IL7R_CD4', 'CXCL13_Tcells'))
+
+# Create interaction vectors
+interaction_vectors <- list(
+  nr_pre = paste(nr_pre$target, nr_pre$ligand, nr_pre$receptor, sep = '->'),
+  nr_post = paste(nr_post$target, nr_post$ligand, nr_post$receptor, sep = '->'),
+  r_pre = paste(r_pre$target, r_pre$ligand, r_pre$receptor, sep = '->'),
+  r_post = paste(r_post$target, r_post$ligand, r_post$receptor, sep = '->')
+)
+
+cell_types <- c('GZMK_CD8', 'NR4A2_CD8', 'ITGAE_CD8', 'CXCL13_Tcells', 'Tregs', 'IL7R_CD4')
+interaction_groups <- list()
+
+for (cell_type in cell_types) {
+  interaction_groups[[cell_type]] <- list(
+    nr_pre = interaction_vectors$nr_pre[grep(cell_type, interaction_vectors$nr_pre)],
+    nr_post = interaction_vectors$nr_post[grep(cell_type, interaction_vectors$nr_post)],
+    r_pre = interaction_vectors$r_pre[grep(cell_type, interaction_vectors$r_pre)],
+    r_post = interaction_vectors$r_post[grep(cell_type, interaction_vectors$r_post)]
+  )
+}
+
+specific_and_shared_interactions <- list()
+
+for (cell_type in cell_types) {
+  specific_and_shared_interactions[[cell_type]] <- list(
+    r_spec_post = setdiff(interaction_groups[[cell_type]]$r_post, interaction_groups[[cell_type]]$nr_post),
+    r_spec_pre = setdiff(interaction_groups[[cell_type]]$r_pre, interaction_groups[[cell_type]]$nr_pre),
+    nr_spec_post = setdiff(interaction_groups[[cell_type]]$nr_post, interaction_groups[[cell_type]]$r_post),
+    nr_spec_pre = setdiff(interaction_groups[[cell_type]]$nr_pre, interaction_groups[[cell_type]]$r_pre),
+    shared_post = intersect(interaction_groups[[cell_type]]$nr_post, interaction_groups[[cell_type]]$r_post),
+    shared_pre = intersect(interaction_groups[[cell_type]]$nr_pre, interaction_groups[[cell_type]]$r_pre)
+  )
+}
+
+# Lists to store the results
+nr_spec_pre_r_spec_post <- list()
+nr_spec_pre_nr_spec_post <- list()
+nr_spec_pre_shared_post <- list()
+
+noSigPreTx_nrSpecPostTx <- list()
+noSigPreTx_sharedPostTx <- list()
+noSigPreTx_rSpecPostTx <- list()
+
+noSigPostTx_nrSpecPreTx <- list()
+#noSigPostTx_sharedPreTx <- list()
+#noSigPostTx_rSpecPreTx <- list()
+
+for (cell_type in cell_types) {
+  # Intersections
+  nr_spec_pre_r_spec_post[[cell_type]] <- intersect(specific_and_shared_interactions[[cell_type]]$nr_spec_pre, specific_and_shared_interactions[[cell_type]]$r_spec_post)
+  nr_spec_pre_nr_spec_post[[cell_type]] <- intersect(specific_and_shared_interactions[[cell_type]]$nr_spec_pre, specific_and_shared_interactions[[cell_type]]$nr_spec_post)
+  nr_spec_pre_shared_post[[cell_type]] <- intersect(specific_and_shared_interactions[[cell_type]]$nr_spec_pre, specific_and_shared_interactions[[cell_type]]$shared_post)
+  
+  # Differences for post-treatment interactions not found in pre-treatment
+  # Only consider interactions that were not significant in R pre-treatment but were significant in NR pre-treatment
+  r_spec_pre_interactions <- specific_and_shared_interactions[[cell_type]]$r_spec_pre
+  r_not_nr_spec_pre_interactions <- setdiff(interaction_groups[[cell_type]]$r_pre, interaction_groups[[cell_type]]$nr_pre)
+  #noSigPreTx_nrSpecPostTx[[cell_type]] <- data.frame(setdiff(specific_and_shared_interactions[[cell_type]]$nr_spec_post, r_not_nr_spec_pre_interactions))
+  #noSigPreTx_sharedPostTx[[cell_type]] <- data.frame(setdiff(specific_and_shared_interactions[[cell_type]]$shared_post, r_not_nr_spec_pre_interactions))
+  #noSigPreTx_rSpecPostTx[[cell_type]] <- data.frame(setdiff(specific_and_shared_interactions[[cell_type]]$r_spec_post, r_not_nr_spec_pre_interactions))
+  noSigPreTx_nrSpecPostTx[[cell_type]] <- data.frame(intersect(specific_and_shared_interactions[[cell_type]]$nr_spec_post, r_not_nr_spec_pre_interactions))
+  noSigPreTx_sharedPostTx[[cell_type]] <- data.frame(intersect(specific_and_shared_interactions[[cell_type]]$shared_post, r_not_nr_spec_pre_interactions))
+  noSigPreTx_rSpecPostTx[[cell_type]] <- data.frame(intersect(specific_and_shared_interactions[[cell_type]]$r_spec_post, r_not_nr_spec_pre_interactions))
+  
+  # Differences for pre-treatment interactions not found in post-treatment
+  post_tx_interactions <- c(specific_and_shared_interactions[[cell_type]]$nr_spec_post, specific_and_shared_interactions[[cell_type]]$r_spec_post, specific_and_shared_interactions[[cell_type]]$shared_post)
+  noSigPostTx_nrSpecPreTx[[cell_type]] <- data.frame(setdiff(specific_and_shared_interactions[[cell_type]]$nr_spec_pre, post_tx_interactions))
+ # noSigPostTx_sharedPreTx[[cell_type]] <- data.frame(setdiff(specific_and_shared_interactions[[cell_type]]$shared_pre, post_tx_interactions))
+#  noSigPostTx_rSpecPreTx[[cell_type]] <- data.frame(setdiff(specific_and_shared_interactions[[cell_type]]$r_spec_pre, post_tx_interactions))
+}
+
+
+
+cell_types <- c('GZMK_CD8', 'NR4A2_CD8', 'ITGAE_CD8', 'CXCL13_Tcells', 'Tregs', 'IL7R_CD4')
+
+# Function to extract the receiver from the interaction string
+extract_receiver <- function(interaction) {
+  substr(interaction, 1, regexpr("->", interaction) - 1)
+}
+
+# Lists to store the results with metadata
+nr_spec_pre_r_spec_post_df <- list()
+nr_spec_pre_nr_spec_post_df <- list()
+nr_spec_pre_shared_post_df <- list()
+
+noSigPreTx_nrSpecPostTx_df <- list()
+noSigPreTx_sharedPostTx_df <- list()
+noSigPreTx_rSpecPostTx_df <- list()
+
+noSigPostTx_nrSpecPreTx_df <- list()
+#noSigPostTx_sharedPreTx_df <- list()
+#noSigPostTx_rSpecPreTx_df <- list()
+
+for (cell_type in cell_types) {
+  # Intersections with metadata
+  if (length(nr_spec_pre_r_spec_post[[cell_type]]) > 0) {
+    nr_spec_pre_r_spec_post_df[[cell_type]] <- data.frame(nr_spec_pre_r_spec_post = nr_spec_pre_r_spec_post[[cell_type]])
+    if (nrow(nr_spec_pre_r_spec_post_df[[cell_type]]) > 0) {
+      nr_spec_pre_r_spec_post_df[[cell_type]]$PostTxSpecificity <- paste(cell_type, "Shared post-tx")
+      nr_spec_pre_r_spec_post_df[[cell_type]]$recPreTx <- sapply(nr_spec_pre_r_spec_post[[cell_type]], extract_receiver)
+    }
+  }
+  
+  if (length(nr_spec_pre_nr_spec_post[[cell_type]]) > 0) {
+    nr_spec_pre_nr_spec_post_df[[cell_type]] <- data.frame(nr_spec_pre_nr_spec_post = nr_spec_pre_nr_spec_post[[cell_type]])
+    if (nrow(nr_spec_pre_nr_spec_post_df[[cell_type]]) > 0) {
+      nr_spec_pre_nr_spec_post_df[[cell_type]]$PostTxSpecificity <- paste(cell_type, "NR-spec post-tx")
+      nr_spec_pre_nr_spec_post_df[[cell_type]]$recPreTx <- sapply(nr_spec_pre_nr_spec_post[[cell_type]], extract_receiver)
+    }
+  }
+  
+  if (length(nr_spec_pre_shared_post[[cell_type]]) > 0) {
+    nr_spec_pre_shared_post_df[[cell_type]] <- data.frame(nr_spec_pre_shared_post = nr_spec_pre_shared_post[[cell_type]])
+    if (nrow(nr_spec_pre_shared_post_df[[cell_type]]) > 0) {
+      nr_spec_pre_shared_post_df[[cell_type]]$PostTxSpecificity <- paste(cell_type, "Shared post-tx")
+      nr_spec_pre_shared_post_df[[cell_type]]$recPreTx <- sapply(nr_spec_pre_shared_post[[cell_type]], extract_receiver)
+    }
+  }
+  
+  # Differences for post-treatment interactions not found in pre-treatment
+  if (length(noSigPreTx_nrSpecPostTx[[cell_type]]) > 0) {
+    noSigPreTx_nrSpecPostTx_df[[cell_type]] <- noSigPreTx_nrSpecPostTx[[cell_type]]
+    if (nrow(noSigPreTx_nrSpecPostTx_df[[cell_type]]) > 0) {
+      noSigPreTx_nrSpecPostTx_df[[cell_type]]$PostTxSpecificity <- paste(cell_type, "NR-spec post-tx")
+      noSigPreTx_nrSpecPostTx_df[[cell_type]]$recPreTx <- 'NotSig_PreTx'
+    }
+  }
+  
+  if (length(noSigPreTx_sharedPostTx[[cell_type]]) > 0) {
+    noSigPreTx_sharedPostTx_df[[cell_type]] <- noSigPreTx_sharedPostTx[[cell_type]]
+    if (nrow(noSigPreTx_sharedPostTx_df[[cell_type]]) > 0) {
+      noSigPreTx_sharedPostTx_df[[cell_type]]$PostTxSpecificity <- paste(cell_type, "Shared post-tx")
+      noSigPreTx_sharedPostTx_df[[cell_type]]$recPreTx <- 'NotSig_PreTx'
+    }
+  }
+  
+  if (length(noSigPreTx_rSpecPostTx[[cell_type]]) > 0) {
+    noSigPreTx_rSpecPostTx_df[[cell_type]] <- noSigPreTx_rSpecPostTx[[cell_type]]
+    if (nrow(noSigPreTx_rSpecPostTx_df[[cell_type]]) > 0) {
+      noSigPreTx_rSpecPostTx_df[[cell_type]]$PostTxSpecificity <- paste(cell_type, "R-spec post-tx")
+      noSigPreTx_rSpecPostTx_df[[cell_type]]$recPreTx <- 'NotSig_PreTx'
+    }
+  }
+  
+  # Differences for pre-treatment interactions not found in post-treatment
+  if (length(noSigPostTx_nrSpecPreTx[[cell_type]]) > 0) {
+    noSigPostTx_nrSpecPreTx_df[[cell_type]] <- noSigPostTx_nrSpecPreTx[[cell_type]]
+    if (nrow(noSigPostTx_nrSpecPreTx_df[[cell_type]]) > 0) {
+      noSigPostTx_nrSpecPreTx_df[[cell_type]]$PostTxSpecificity <- 'NotSig_PostTx'
+      noSigPostTx_nrSpecPreTx_df[[cell_type]]$recPreTx <- cell_type
+    }
+  }
+  
+#  if (length(noSigPostTx_sharedPreTx[[cell_type]]) > 0) {
+#    noSigPostTx_sharedPreTx_df[[cell_type]] <- noSigPostTx_sharedPreTx[[cell_type]]
+#    if (nrow(noSigPostTx_sharedPreTx_df[[cell_type]]) > 0) {
+#      noSigPostTx_sharedPreTx_df[[cell_type]]$PostTxSpecificity <- 'NotSig_PostTx'
+#      noSigPostTx_sharedPreTx_df[[cell_type]]$recPreTx <- cell_type
+#    }
+#  }
+  
+#  if (length(noSigPostTx_rSpecPreTx[[cell_type]]) > 0) {
+#    noSigPostTx_rSpecPreTx_df[[cell_type]] <- noSigPostTx_rSpecPreTx[[cell_type]]
+#    if (nrow(noSigPostTx_rSpecPreTx_df[[cell_type]]) > 0) {
+#      noSigPostTx_rSpecPreTx_df[[cell_type]]$PostTxSpecificity <- 'NotSig_PostTx'
+#      noSigPostTx_rSpecPreTx_df[[cell_type]]$recPreTx <- cell_type
+ #   }
+#  }
+}
+
+
+
+# Load necessary libraries
+library(dplyr)
+
+# Lists to store the results
+nr_spec_pre_r_spec_post_tables <- list()
+nr_spec_pre_nr_spec_post_tables <- list()
+nr_spec_pre_shared_post_tables <- list()
+
+noSigPreTx_nrSpecPostTx_tables <- list()
+noSigPreTx_sharedPostTx_tables <- list()
+noSigPreTx_rSpecPostTx_tables <- list()
+
+noSigPostTx_nrSpecPreTx_tables <- list()
+noSigPostTx_sharedPreTx_tables <- list()
+noSigPostTx_rSpecPreTx_tables <- list()
+
+# Combine all tables into one dataframe
+cell_types <- c('GZMK_CD8', 'NR4A2_CD8', 'ITGAE_CD8', 'CXCL13_Tcells', 'Tregs', 'IL7R_CD4')
+
+all_data <- data.frame()
+
+for (cell_type in cell_types) {
+  # Intersections with metadata
+  if (!is.null(nr_spec_pre_r_spec_post_df[[cell_type]]) && nrow(nr_spec_pre_r_spec_post_df[[cell_type]]) > 0) {
+    nr_spec_pre_r_spec_post_table <- as.data.frame(table(nr_spec_pre_r_spec_post_df[[cell_type]]$PostTxSpecificity, nr_spec_pre_r_spec_post_df[[cell_type]]$recPreTx))
+    nr_spec_pre_r_spec_post_table$source <- "nr_spec_pre_r_spec_post"
+    all_data <- rbind(all_data, nr_spec_pre_r_spec_post_table)
+  }
+  
+  if (!is.null(nr_spec_pre_nr_spec_post_df[[cell_type]]) && nrow(nr_spec_pre_nr_spec_post_df[[cell_type]]) > 0) {
+    nr_spec_pre_nr_spec_post_table <- as.data.frame(table(nr_spec_pre_nr_spec_post_df[[cell_type]]$PostTxSpecificity, nr_spec_pre_nr_spec_post_df[[cell_type]]$recPreTx))
+    nr_spec_pre_nr_spec_post_table$source <- "nr_spec_pre_nr_spec_post"
+    all_data <- rbind(all_data, nr_spec_pre_nr_spec_post_table)
+  }
+  
+  if (!is.null(nr_spec_pre_shared_post_df[[cell_type]]) && nrow(nr_spec_pre_shared_post_df[[cell_type]]) > 0) {
+    nr_spec_pre_shared_post_table <- as.data.frame(table(nr_spec_pre_shared_post_df[[cell_type]]$PostTxSpecificity, nr_spec_pre_shared_post_df[[cell_type]]$recPreTx))
+    nr_spec_pre_shared_post_table$source <- "nr_spec_pre_shared_post"
+    all_data <- rbind(all_data, nr_spec_pre_shared_post_table)
+  }
+  
+  # Differences for post-treatment interactions not found in pre-treatment
+  if (!is.null(noSigPreTx_nrSpecPostTx_df[[cell_type]]) && nrow(noSigPreTx_nrSpecPostTx_df[[cell_type]]) > 0) {
+    noSigPreTx_nrSpecPostTx_table <- as.data.frame(table(noSigPreTx_nrSpecPostTx_df[[cell_type]]$PostTxSpecificity, noSigPreTx_nrSpecPostTx_df[[cell_type]]$recPreTx))
+    noSigPreTx_nrSpecPostTx_table$source <- "noSigPreTx_nrSpecPostTx"
+    all_data <- rbind(all_data, noSigPreTx_nrSpecPostTx_table)
+  }
+  
+  if (!is.null(noSigPreTx_sharedPostTx_df[[cell_type]]) && nrow(noSigPreTx_sharedPostTx_df[[cell_type]]) > 0) {
+    noSigPreTx_sharedPostTx_table <- as.data.frame(table(noSigPreTx_sharedPostTx_df[[cell_type]]$PostTxSpecificity, noSigPreTx_sharedPostTx_df[[cell_type]]$recPreTx))
+    noSigPreTx_sharedPostTx_table$source <- "noSigPreTx_sharedPostTx"
+    all_data <- rbind(all_data, noSigPreTx_sharedPostTx_table)
+  }
+  
+  if (!is.null(noSigPreTx_rSpecPostTx_df[[cell_type]]) && nrow(noSigPreTx_rSpecPostTx_df[[cell_type]]) > 0) {
+    noSigPreTx_rSpecPostTx_table <- as.data.frame(table(noSigPreTx_rSpecPostTx_df[[cell_type]]$PostTxSpecificity, noSigPreTx_rSpecPostTx_df[[cell_type]]$recPreTx))
+    noSigPreTx_rSpecPostTx_table$source <- "noSigPreTx_rSpecPostTx"
+    all_data <- rbind(all_data, noSigPreTx_rSpecPostTx_table)
+  }
+  
+  # Differences for pre-treatment interactions not found in post-treatment
+  if (!is.null(noSigPostTx_nrSpecPreTx_df[[cell_type]]) && nrow(noSigPostTx_nrSpecPreTx_df[[cell_type]]) > 0) {
+    noSigPostTx_nrSpecPreTx_table <- as.data.frame(table(noSigPostTx_nrSpecPreTx_df[[cell_type]]$PostTxSpecificity, noSigPostTx_nrSpecPreTx_df[[cell_type]]$recPreTx))
+    noSigPostTx_nrSpecPreTx_table$source <- "noSigPostTx_nrSpecPreTx"
+    all_data <- rbind(all_data, noSigPostTx_nrSpecPreTx_table)
+  }
+  
+#  if (!is.null(noSigPostTx_sharedPreTx_df[[cell_type]]) && nrow(noSigPostTx_sharedPreTx_df[[cell_type]]) > 0) {
+#    noSigPostTx_sharedPreTx_table <- as.data.frame(table(noSigPostTx_sharedPreTx_df[[cell_type]]$PostTxSpecificity, noSigPostTx_sharedPreTx_df[[cell_type]]$recPreTx))
+#    noSigPostTx_sharedPreTx_table$source <- "noSigPostTx_sharedPreTx"
+#    all_data <- rbind(all_data, noSigPostTx_sharedPreTx_table)
+  }
+  
+#  if (!is.null(noSigPostTx_rSpecPreTx_df[[cell_type]]) && nrow(noSigPostTx_rSpecPreTx_df[[cell_type]]) > 0) {
+#    noSigPostTx_rSpecPreTx_table <- as.data.frame(table(noSigPostTx_rSpecPreTx_df[[cell_type]]$PostTxSpecificity, noSigPostTx_rSpecPreTx_df[[cell_type]]$recPreTx))
+#    noSigPostTx_rSpecPreTx_table$source <- "noSigPostTx_rSpecPreTx"
+#    all_data <- rbind(all_data, noSigPostTx_rSpecPreTx_table)
+#  }
+#}
+
+# Rename columns for clarity
+colnames(all_data) <- c("PostTxSpecificity", "recPreTx", "Frequency", "source")
+
+# Prepare for alluvial plot
+all_data_long <- all_data %>%
+  pivot_longer(cols = c(PostTxSpecificity, recPreTx), names_to = "variable", values_to = "value")
+
+
+# Define the order of strata on the right side
+right_strata_order <- c("NotSig_PostTx",
+                        "NR4A2_CD8 R-spec post-tx", "CXCL13_Tcells R-spec post-tx", "Tregs R-spec post-tx", "IL7R_CD4 R-spec post-tx","ITGAE_CD8 R-spec post-tx",
+                        "GZMK_CD8 R-spec post-tx", "ITGAE_CD8 NR-spec post-tx", "CXCL13_Tcells NR-spec post-tx", "Tregs NR-spec post-tx", "IL7R_CD4 NR-spec post-tx",
+                        "GZMK_CD8 NR-spec post-tx", "NR4A2_CD8 NR-spec post-tx",
+                        "NR4A2_CD8 Shared post-tx", "CXCL13_Tcells Shared post-tx","GZMK_CD8 Shared post-tx", 
+                        "ITGAE_CD8 Shared post-tx", "Tregs Shared post-tx", "IL7R_CD4 Shared post-tx")
+
+# Rename columns if necessary to match the expected names
+colnames(all_data) <- c("Var1", "Var2", "Freq", "source")
+
+# Reorder Var1 based on the defined order
+all_data$Var1 <- factor(all_data$Var1, levels = right_strata_order)
+
+# Define the order of left strata
+left_strata_order <- c("NotSig_PreTx",
+                       "CXCL13_Tcells", "IL7R_CD4", "ITGAE_CD8", "Tregs",
+                       "GZMK_CD8", "NR4A2_CD8")
+
+# Reorder Var2 based on the defined order
+all_data$Var2 <- factor(all_data$Var2, levels = left_strata_order)
+
+
+
+# Define color palettes
+left_colors <- c("CXCL13_Tcells" = "#B2DF8A", "IL7R_CD4" = "#7570B3", 
+                 "ITGAE_CD8" = "#33A02C", "Tregs" = "#55A1B1",
+                 'GZMK_CD8' = "#8DD3C7", 'NR4A2_CD8' = "#BEAED4", 'NotSig_PreTx' = 'grey50')
+
+
+link_colors2 <- c('NR-spec' = 'dodgerblue', 'R-spec' = 'indianred', "Shared" = 'orchid')
+
+right_colors <- c("ITGAE_CD8 NR-spec post-tx" = "#33A02C", "CXCL13_Tcells NR-spec post-tx" = "#B2DF8A",
+                  "Tregs NR-spec post-tx" = "#55A1B1", "IL7R_CD4 NR-spec post-tx" = "#7570B3",
+                  "GZMK_CD8 NR-spec post-tx" = "#8DD3C7", "NR4A2_CD8 NR-spec post-tx" = "#BEAED4",
+                  "CXCL13_Tcells Shared post-tx" = "#B2DF8A", "Tregs Shared post-tx" = "#55A1B1", 
+                  'GZMK_CD8 Shared post-tx' = "#8DD3C7", 'NR4A2_CD8 Shared post-tx' = "#BEAED4",
+                  'ITGAE_CD8 Shared post-tx' = "#33A02C", 'IL7R_CD4 Shared post-tx' = "#7570B3",
+                  #'NR4A2_CD8 R-spec post-tx' = 'indianred1', 'CXCL13_Tcells R-spec post-tx' = 'indianred2', 
+                  #'Tregs R-spec post-tx' = 'indianred3', 'IL7R_CD4 R-spec post-tx' = 'indianred4',
+                  'ITGAE_CD8 R-spec post-tx' = "#33A02C", 'GZMK_CD8 R-spec post-tx' = "#8DD3C7",
+                  "NotSig_PostTx" = 'grey50') 
+
+colors <- c(left_colors, right_colors, link_colors2)
+
+all_data <- all_data %>%
+  separate(Var1, into = c("Var1_Receiver", "Var1_Specificity"), sep = " ", remove = FALSE)
+
+all_data$Var1_SpecificityOnly <- gsub(".*\\s(Shared|R-spec|NR-spec).*", "\\1", all_data$Var1)
+right_strata_order <- c("NotSig_PostTx", "R-spec", "NR-spec", "Shared")
+
+
+
+
+ggplot(data = all_data, aes(axis1 = Var2, axis2 = Var1_SpecificityOnly, y = Freq)) +
+  geom_alluvium(aes(fill = Var1)) + # Keep original Var1 for color
+  geom_stratum(aes(fill = after_stat(stratum)), color = "black", size = 0.5) +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), check_overlap = TRUE, size = 3) +
+  theme_void() +
+  scale_fill_manual(values = colors) +
+  guides(fill = "none") +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank()
+  )
+ggsave('Paired_NRSpecNoSigPreTx_Looped_include_PreTxSpec_sankey_plot_bloodlike_mono_NRspecPre_toPost.pdf', width = 8.5, height = 10)
+write.csv(all_data, file = 'NRSpecNoSigPreTx_Looped_include_PreTxSpec_sankey_plot_bloodlike_mono_NRspecPre_toPost.csv')
+```
+
+```{r Fig 3d--Responder specific pre-tx}
+original_receivers = c('IL7R_CD4', 'ITGAE_CD8', 'GZMK_CD8', 'NR4A2_CD8', 'CXCL13_Tcells', 'Tregs')
+
+# Duplicate the vector and append "_R" and "_NR"
+receivers_R <- paste(original_receivers, "_R", sep = "")
+receivers_NR <- paste(original_receivers, "_NR", sep = "")
+
+# Combine and rearrange the order
+combined_receivers <- c(receivers_NR, receivers_R)
+
+# Assuming nr_pre_cellchat, nr_post_cellchat, r_pre_cellchat, r_post_cellchat are already loaded
+
+# Subset communications
+nr_pre <- CellChat::subsetCommunication(nr_pre_cellchat, 
+                                        sources.use = 'Blood-like_CD14_Mono', 
+                                        targets.use = c('GZMK_CD8', 'Tregs', 'NR4A2_CD8', 'ITGAE_CD8', 'IL7R_CD4', 'CXCL13_Tcells'))
+
+nr_post <- CellChat::subsetCommunication(nr_post_cellchat, 
+                                         sources.use = 'Blood-like_CD14_Mono', 
+                                         targets.use = c('GZMK_CD8', 'Tregs', 'NR4A2_CD8', 'ITGAE_CD8', 'IL7R_CD4', 'CXCL13_Tcells'))
+
+r_pre <- CellChat::subsetCommunication(r_pre_cellchat, 
+                                       sources.use = 'Blood-like_CD14_Mono', 
+                                       targets.use = c('GZMK_CD8', 'Tregs', 'NR4A2_CD8', 'ITGAE_CD8', 'IL7R_CD4', 'CXCL13_Tcells'))
+
+r_post <- CellChat::subsetCommunication(r_post_cellchat, 
+                                        sources.use = 'Blood-like_CD14_Mono', 
+                                        targets.use = c('GZMK_CD8', 'Tregs', 'NR4A2_CD8', 'ITGAE_CD8', 'IL7R_CD4', 'CXCL13_Tcells'))
+
+# Create interaction vectors
+interaction_vectors <- list(
+  nr_pre = paste(nr_pre$target, nr_pre$ligand, nr_pre$receptor, sep = '->'),
+  nr_post = paste(nr_post$target, nr_post$ligand, nr_post$receptor, sep = '->'),
+  r_pre = paste(r_pre$target, r_pre$ligand, r_pre$receptor, sep = '->'),
+  r_post = paste(r_post$target, r_post$ligand, r_post$receptor, sep = '->')
+)
+
+cell_types <- c('GZMK_CD8', 'NR4A2_CD8', 'ITGAE_CD8', 'CXCL13_Tcells', 'Tregs', 'IL7R_CD4')
+interaction_groups <- list()
+
+for (cell_type in cell_types) {
+  interaction_groups[[cell_type]] <- list(
+    nr_pre = interaction_vectors$nr_pre[grep(cell_type, interaction_vectors$nr_pre)],
+    nr_post = interaction_vectors$nr_post[grep(cell_type, interaction_vectors$nr_post)],
+    r_pre = interaction_vectors$r_pre[grep(cell_type, interaction_vectors$r_pre)],
+    r_post = interaction_vectors$r_post[grep(cell_type, interaction_vectors$r_post)]
+  )
+}
+
+specific_and_shared_interactions <- list()
+
+for (cell_type in cell_types) {
+  specific_and_shared_interactions[[cell_type]] <- list(
+    r_spec_post = setdiff(interaction_groups[[cell_type]]$r_post, interaction_groups[[cell_type]]$nr_post),
+    r_spec_pre = setdiff(interaction_groups[[cell_type]]$r_pre, interaction_groups[[cell_type]]$nr_pre),
+    nr_spec_post = setdiff(interaction_groups[[cell_type]]$nr_post, interaction_groups[[cell_type]]$r_post),
+    nr_spec_pre = setdiff(interaction_groups[[cell_type]]$nr_pre, interaction_groups[[cell_type]]$r_pre),
+    shared_post = intersect(interaction_groups[[cell_type]]$nr_post, interaction_groups[[cell_type]]$r_post),
+    shared_pre = intersect(interaction_groups[[cell_type]]$nr_pre, interaction_groups[[cell_type]]$r_pre)
+  )
+}
+
+# Lists to store the results
+r_spec_pre_r_spec_post <- list()
+r_spec_pre_nr_spec_post <- list()
+r_spec_pre_shared_post <- list()
+
+noSigPreTx_nrSpecPostTx <- list()
+noSigPreTx_sharedPostTx <- list()
+noSigPreTx_rSpecPostTx <- list()
+
+#noSigPostTx_nrSpecPreTx <- list()
+#noSigPostTx_sharedPreTx <- list()
+noSigPostTx_rSpecPreTx <- list()
+
+for (cell_type in cell_types) {
+  # Intersections
+  r_spec_pre_r_spec_post[[cell_type]] <- intersect(specific_and_shared_interactions[[cell_type]]$r_spec_pre, specific_and_shared_interactions[[cell_type]]$r_spec_post)
+  r_spec_pre_nr_spec_post[[cell_type]] <- intersect(specific_and_shared_interactions[[cell_type]]$r_spec_pre, specific_and_shared_interactions[[cell_type]]$nr_spec_post)
+  r_spec_pre_shared_post[[cell_type]] <- intersect(specific_and_shared_interactions[[cell_type]]$r_spec_pre, specific_and_shared_interactions[[cell_type]]$shared_post)
+  
+  # Differences for post-treatment interactions not found in pre-treatment
+  # Only consider interactions that were not significant in R pre-treatment but were significant in NR pre-treatment
+  nr_spec_pre_interactions <- specific_and_shared_interactions[[cell_type]]$nr_spec_pre
+  r_not_nr_spec_pre_interactions <- setdiff(interaction_groups[[cell_type]]$nr_pre, interaction_groups[[cell_type]]$r_pre)
+  noSigPreTx_nrSpecPostTx[[cell_type]] <- data.frame(setdiff(specific_and_shared_interactions[[cell_type]]$nr_spec_post, r_not_nr_spec_pre_interactions))
+  noSigPreTx_sharedPostTx[[cell_type]] <- data.frame(setdiff(specific_and_shared_interactions[[cell_type]]$shared_post, r_not_nr_spec_pre_interactions))
+  noSigPreTx_rSpecPostTx[[cell_type]] <- data.frame(setdiff(specific_and_shared_interactions[[cell_type]]$r_spec_post, r_not_nr_spec_pre_interactions))
+  noSigPreTx_nrSpecPostTx[[cell_type]] <- data.frame(intersect(specific_and_shared_interactions[[cell_type]]$nr_spec_post, r_not_nr_spec_pre_interactions))
+  noSigPreTx_sharedPostTx[[cell_type]] <- data.frame(intersect(specific_and_shared_interactions[[cell_type]]$shared_post, r_not_nr_spec_pre_interactions))
+  noSigPreTx_rSpecPostTx[[cell_type]] <- data.frame(intersect(specific_and_shared_interactions[[cell_type]]$r_spec_post, r_not_nr_spec_pre_interactions))
+  
+  # Differences for pre-treatment interactions not found in post-treatment
+  post_tx_interactions <- c(specific_and_shared_interactions[[cell_type]]$nr_spec_post, specific_and_shared_interactions[[cell_type]]$r_spec_post, specific_and_shared_interactions[[cell_type]]$shared_post)
+#  noSigPostTx_nrSpecPreTx[[cell_type]] <- data.frame(setdiff(specific_and_shared_interactions[[cell_type]]$nr_spec_pre, post_tx_interactions))
+#  noSigPostTx_sharedPreTx[[cell_type]] <- data.frame(setdiff(specific_and_shared_interactions[[cell_type]]$shared_pre, post_tx_interactions))
+  noSigPostTx_rSpecPreTx[[cell_type]] <- data.frame(setdiff(specific_and_shared_interactions[[cell_type]]$r_spec_pre, post_tx_interactions))
+}
+
+
+
+
+
+
+
+
+
+
+cell_types <- c('GZMK_CD8', 'NR4A2_CD8', 'ITGAE_CD8', 'CXCL13_Tcells', 'Tregs', 'IL7R_CD4')
+
+# Function to extract the receiver from the interaction string
+extract_receiver <- function(interaction) {
+  substr(interaction, 1, regexpr("->", interaction) - 1)
+}
+
+# Lists to store the results with metadata
+r_spec_pre_r_spec_post_df <- list()
+r_spec_pre_nr_spec_post_df <- list()
+r_spec_pre_shared_post_df <- list()
+
+noSigPreTx_nrSpecPostTx_df <- list()
+noSigPreTx_sharedPostTx_df <- list()
+noSigPreTx_rSpecPostTx_df <- list()
+
+#noSigPostTx_nrSpecPreTx_df <- list()
+#noSigPostTx_sharedPreTx_df <- list()
+noSigPostTx_rSpecPreTx_df <- list()
+
+for (cell_type in cell_types) {
+  # Intersections with metadata
+  if (length(r_spec_pre_r_spec_post[[cell_type]]) > 0) {
+    r_spec_pre_r_spec_post_df[[cell_type]] <- data.frame(r_spec_pre_r_spec_post = r_spec_pre_r_spec_post[[cell_type]])
+    if (nrow(r_spec_pre_r_spec_post_df[[cell_type]]) > 0) {
+      r_spec_pre_r_spec_post_df[[cell_type]]$PostTxSpecificity <- paste(cell_type, "Shared post-tx")
+      r_spec_pre_r_spec_post_df[[cell_type]]$recPreTx <- sapply(r_spec_pre_r_spec_post[[cell_type]], extract_receiver)
+    }
+  }
+  
+  if (length(r_spec_pre_nr_spec_post[[cell_type]]) > 0) {
+    r_spec_pre_nr_spec_post_df[[cell_type]] <- data.frame(r_spec_pre_nr_spec_post = r_spec_pre_nr_spec_post[[cell_type]])
+    if (nrow(r_spec_pre_nr_spec_post_df[[cell_type]]) > 0) {
+      r_spec_pre_nr_spec_post_df[[cell_type]]$PostTxSpecificity <- paste(cell_type, "NR-spec post-tx")
+      r_spec_pre_nr_spec_post_df[[cell_type]]$recPreTx <- sapply(r_spec_pre_nr_spec_post[[cell_type]], extract_receiver)
+    }
+  }
+  
+  if (length(r_spec_pre_shared_post[[cell_type]]) > 0) {
+    r_spec_pre_shared_post_df[[cell_type]] <- data.frame(r_spec_pre_shared_post = r_spec_pre_shared_post[[cell_type]])
+    if (nrow(r_spec_pre_shared_post_df[[cell_type]]) > 0) {
+      r_spec_pre_shared_post_df[[cell_type]]$PostTxSpecificity <- paste(cell_type, "Shared post-tx")
+      r_spec_pre_shared_post_df[[cell_type]]$recPreTx <- sapply(r_spec_pre_shared_post[[cell_type]], extract_receiver)
+    }
+  }
+  
+  # Differences for post-treatment interactions not found in pre-treatment
+  if (length(noSigPreTx_nrSpecPostTx[[cell_type]]) > 0) {
+    noSigPreTx_nrSpecPostTx_df[[cell_type]] <- noSigPreTx_nrSpecPostTx[[cell_type]]
+    if (nrow(noSigPreTx_nrSpecPostTx_df[[cell_type]]) > 0) {
+      noSigPreTx_nrSpecPostTx_df[[cell_type]]$PostTxSpecificity <- paste(cell_type, "NR-spec post-tx")
+      noSigPreTx_nrSpecPostTx_df[[cell_type]]$recPreTx <- 'NotSig_PreTx'
+    }
+  }
+  
+  if (length(noSigPreTx_sharedPostTx[[cell_type]]) > 0) {
+    noSigPreTx_sharedPostTx_df[[cell_type]] <- noSigPreTx_sharedPostTx[[cell_type]]
+    if (nrow(noSigPreTx_sharedPostTx_df[[cell_type]]) > 0) {
+      noSigPreTx_sharedPostTx_df[[cell_type]]$PostTxSpecificity <- paste(cell_type, "Shared post-tx")
+      noSigPreTx_sharedPostTx_df[[cell_type]]$recPreTx <- 'NotSig_PreTx'
+    }
+  }
+  
+  if (length(noSigPreTx_rSpecPostTx[[cell_type]]) > 0) {
+    noSigPreTx_rSpecPostTx_df[[cell_type]] <- noSigPreTx_rSpecPostTx[[cell_type]]
+    if (nrow(noSigPreTx_rSpecPostTx_df[[cell_type]]) > 0) {
+      noSigPreTx_rSpecPostTx_df[[cell_type]]$PostTxSpecificity <- paste(cell_type, "R-spec post-tx")
+      noSigPreTx_rSpecPostTx_df[[cell_type]]$recPreTx <- 'NotSig_PreTx'
+    }
+  }
+  
+  # Differences for pre-treatment interactions not found in post-treatment
+#  if (length(noSigPostTx_nrSpecPreTx[[cell_type]]) > 0) {
+#    noSigPostTx_nrSpecPreTx_df[[cell_type]] <- noSigPostTx_nrSpecPreTx[[cell_type]]
+#    if (nrow(noSigPostTx_nrSpecPreTx_df[[cell_type]]) > 0) {
+#      noSigPostTx_nrSpecPreTx_df[[cell_type]]$PostTxSpecificity <- 'NotSig_PostTx'
+#      noSigPostTx_nrSpecPreTx_df[[cell_type]]$recPreTx <- cell_type
+#    }
+#  }
+  
+#  if (length(noSigPostTx_sharedPreTx[[cell_type]]) > 0) {
+#    noSigPostTx_sharedPreTx_df[[cell_type]] <- noSigPostTx_sharedPreTx[[cell_type]]
+#    if (nrow(noSigPostTx_sharedPreTx_df[[cell_type]]) > 0) {
+#      noSigPostTx_sharedPreTx_df[[cell_type]]$PostTxSpecificity <- 'NotSig_PostTx'
+#      noSigPostTx_sharedPreTx_df[[cell_type]]$recPreTx <- cell_type
+#    }
+#  }
+  
+  if (length(noSigPostTx_rSpecPreTx[[cell_type]]) > 0) {
+    noSigPostTx_rSpecPreTx_df[[cell_type]] <- noSigPostTx_rSpecPreTx[[cell_type]]
+    if (nrow(noSigPostTx_rSpecPreTx_df[[cell_type]]) > 0) {
+      noSigPostTx_rSpecPreTx_df[[cell_type]]$PostTxSpecificity <- 'NotSig_PostTx'
+      noSigPostTx_rSpecPreTx_df[[cell_type]]$recPreTx <- cell_type
+    }
+  }
+}
+
+
+
+# Load necessary libraries
+library(dplyr)
+
+# Lists to store the results
+r_spec_pre_r_spec_post_tables <- list()
+r_spec_pre_nr_spec_post_tables <- list()
+r_spec_pre_shared_post_tables <- list()
+
+noSigPreTx_nrSpecPostTx_tables <- list()
+noSigPreTx_sharedPostTx_tables <- list()
+noSigPreTx_rSpecPostTx_tables <- list()
+
+#noSigPostTx_nrSpecPreTx_tables <- list()
+#noSigPostTx_sharedPreTx_tables <- list()
+noSigPostTx_rSpecPreTx_tables <- list()
+
+# Combine all tables into one dataframe
+cell_types <- c('GZMK_CD8', 'NR4A2_CD8', 'ITGAE_CD8', 'CXCL13_Tcells', 'Tregs', 'IL7R_CD4')
+
+all_data <- data.frame()
+
+for (cell_type in cell_types) {
+  # Intersections with metadata
+  if (!is.null(r_spec_pre_r_spec_post_df[[cell_type]]) && nrow(r_spec_pre_r_spec_post_df[[cell_type]]) > 0) {
+    r_spec_pre_r_spec_post_table <- as.data.frame(table(r_spec_pre_r_spec_post_df[[cell_type]]$PostTxSpecificity, r_spec_pre_r_spec_post_df[[cell_type]]$recPreTx))
+    r_spec_pre_r_spec_post_table$source <- "r_spec_pre_r_spec_post"
+    all_data <- rbind(all_data, r_spec_pre_r_spec_post_table)
+  }
+  
+  if (!is.null(r_spec_pre_nr_spec_post_df[[cell_type]]) && nrow(r_spec_pre_nr_spec_post_df[[cell_type]]) > 0) {
+    r_spec_pre_nr_spec_post_table <- as.data.frame(table(r_spec_pre_nr_spec_post_df[[cell_type]]$PostTxSpecificity, r_spec_pre_nr_spec_post_df[[cell_type]]$recPreTx))
+    r_spec_pre_nr_spec_post_table$source <- "r_spec_pre_nr_spec_post"
+    all_data <- rbind(all_data, r_spec_pre_nr_spec_post_table)
+  }
+  
+  if (!is.null(r_spec_pre_shared_post_df[[cell_type]]) && nrow(r_spec_pre_shared_post_df[[cell_type]]) > 0) {
+    r_spec_pre_shared_post_table <- as.data.frame(table(r_spec_pre_shared_post_df[[cell_type]]$PostTxSpecificity, r_spec_pre_shared_post_df[[cell_type]]$recPreTx))
+    r_spec_pre_shared_post_table$source <- "r_spec_pre_shared_post"
+    all_data <- rbind(all_data, r_spec_pre_shared_post_table)
+  }
+  
+  # Differences for post-treatment interactions not found in pre-treatment
+  if (!is.null(noSigPreTx_nrSpecPostTx_df[[cell_type]]) && nrow(noSigPreTx_nrSpecPostTx_df[[cell_type]]) > 0) {
+    noSigPreTx_nrSpecPostTx_table <- as.data.frame(table(noSigPreTx_nrSpecPostTx_df[[cell_type]]$PostTxSpecificity, noSigPreTx_nrSpecPostTx_df[[cell_type]]$recPreTx))
+    noSigPreTx_nrSpecPostTx_table$source <- "noSigPreTx_nrSpecPostTx"
+    all_data <- rbind(all_data, noSigPreTx_nrSpecPostTx_table)
+  }
+  
+  if (!is.null(noSigPreTx_sharedPostTx_df[[cell_type]]) && nrow(noSigPreTx_sharedPostTx_df[[cell_type]]) > 0) {
+    noSigPreTx_sharedPostTx_table <- as.data.frame(table(noSigPreTx_sharedPostTx_df[[cell_type]]$PostTxSpecificity, noSigPreTx_sharedPostTx_df[[cell_type]]$recPreTx))
+    noSigPreTx_sharedPostTx_table$source <- "noSigPreTx_sharedPostTx"
+    all_data <- rbind(all_data, noSigPreTx_sharedPostTx_table)
+  }
+  
+  if (!is.null(noSigPreTx_rSpecPostTx_df[[cell_type]]) && nrow(noSigPreTx_rSpecPostTx_df[[cell_type]]) > 0) {
+    noSigPreTx_rSpecPostTx_table <- as.data.frame(table(noSigPreTx_rSpecPostTx_df[[cell_type]]$PostTxSpecificity, noSigPreTx_rSpecPostTx_df[[cell_type]]$recPreTx))
+    noSigPreTx_rSpecPostTx_table$source <- "noSigPreTx_rSpecPostTx"
+    all_data <- rbind(all_data, noSigPreTx_rSpecPostTx_table)
+  }
+  
+  # Differences for pre-treatment interactions not found in post-treatment
+#  if (!is.null(noSigPostTx_nrSpecPreTx_df[[cell_type]]) && nrow(noSigPostTx_nrSpecPreTx_df[[cell_type]]) > 0) {
+#    noSigPostTx_nrSpecPreTx_table <- as.data.frame(table(noSigPostTx_nrSpecPreTx_df[[cell_type]]$PostTxSpecificity, noSigPostTx_nrSpecPreTx_df[[cell_type]]$recPreTx))
+#    noSigPostTx_nrSpecPreTx_table$source <- "noSigPostTx_nrSpecPreTx"
+#    all_data <- rbind(all_data, noSigPostTx_nrSpecPreTx_table)
+#  }
+  
+#  if (!is.null(noSigPostTx_sharedPreTx_df[[cell_type]]) && nrow(noSigPostTx_sharedPreTx_df[[cell_type]]) > 0) {
+#    noSigPostTx_sharedPreTx_table <- as.data.frame(table(noSigPostTx_sharedPreTx_df[[cell_type]]$PostTxSpecificity, #noSigPostTx_sharedPreTx_df[[cell_type]]$recPreTx))
+#    noSigPostTx_sharedPreTx_table$source <- "noSigPostTx_sharedPreTx"
+#    all_data <- rbind(all_data, noSigPostTx_sharedPreTx_table)
+#  }
+  
+  if (!is.null(noSigPostTx_rSpecPreTx_df[[cell_type]]) && nrow(noSigPostTx_rSpecPreTx_df[[cell_type]]) > 0) {
+    noSigPostTx_rSpecPreTx_table <- as.data.frame(table(noSigPostTx_rSpecPreTx_df[[cell_type]]$PostTxSpecificity, noSigPostTx_rSpecPreTx_df[[cell_type]]$recPreTx))
+    noSigPostTx_rSpecPreTx_table$source <- "noSigPostTx_rSpecPreTx"
+    all_data <- rbind(all_data, noSigPostTx_rSpecPreTx_table)
+  }
+}
+
+# Rename columns for clarity
+colnames(all_data) <- c("PostTxSpecificity", "recPreTx", "Frequency", "source")
+
+# Prepare for alluvial plot
+all_data_long <- all_data %>%
+  pivot_longer(cols = c(PostTxSpecificity, recPreTx), names_to = "variable", values_to = "value")
+
+
+
+
+
+# Define the order of strata on the right side
+right_strata_order <- c("NotSig_PostTx",
+                        "NR4A2_CD8 R-spec post-tx", "CXCL13_Tcells R-spec post-tx", "Tregs R-spec post-tx", "IL7R_CD4 R-spec post-tx",
+                        "GZMK_CD8 R-spec post-tx",  "ITGAE_CD8 R-spec post-tx",
+                        "ITGAE_CD8 NR-spec post-tx", "CXCL13_Tcells NR-spec post-tx", "Tregs NR-spec post-tx", "IL7R_CD4 NR-spec post-tx",
+                        "GZMK_CD8 NR-spec post-tx", "NR4A2_CD8 NR-spec post-tx",
+                        "NR4A2_CD8 Shared post-tx", "CXCL13_Tcells Shared post-tx","GZMK_CD8 Shared post-tx", 
+                        "ITGAE_CD8 Shared post-tx", "Tregs Shared post-tx", "IL7R_CD4 Shared post-tx")
+
+# Reorder Var1 based on the defined order
+all_data$PostTxSpecificity <- factor(all_data$PostTxSpecificity, levels = right_strata_order)
+
+# Define the order of left strata
+left_strata_order <- c("NotSig_PreTx",
+                       "CXCL13_Tcells", "IL7R_CD4", "ITGAE_CD8", "Tregs",
+                       "GZMK_CD8", "NR4A2_CD8")
+
+# Reorder Var2 based on the defined order
+all_data$recPreTx <- factor(all_data$recPreTx, levels = left_strata_order)
+
+# Rename columns if necessary to match the expected names
+colnames(all_data) <- c("Var1", "Var2", "Freq", "source")
+
+# Define color palettes
+left_colors <- c("CXCL13_Tcells" = "#B2DF8A", "IL7R_CD4" = "#7570B3", 
+                 "ITGAE_CD8" = "#33A02C", "Tregs" = "#55A1B1",
+                 'GZMK_CD8' = "#8DD3C7", 'NR4A2_CD8' = "#BEAED4", 'NotSig_PreTx' = 'grey50')
+
+
+link_colors2 <- c('NR-spec' = 'dodgerblue', 'R-spec' = 'indianred', "Shared" = 'orchid')
+
+right_colors <- c("ITGAE_CD8 NR-spec post-tx" = "#33A02C", "CXCL13_Tcells NR-spec post-tx" = "#B2DF8A",
+                  "Tregs NR-spec post-tx" = "#55A1B1", "IL7R_CD4 NR-spec post-tx" = "#7570B3",
+                  "GZMK_CD8 NR-spec post-tx" = "#8DD3C7", "NR4A2_CD8 NR-spec post-tx" = "#BEAED4",
+                  "CXCL13_Tcells Shared post-tx" = "#B2DF8A", "Tregs Shared post-tx" = "#55A1B1", 
+                  'GZMK_CD8 Shared post-tx' = "#8DD3C7", 'NR4A2_CD8 Shared post-tx' = "#BEAED4",
+                  'ITGAE_CD8 Shared post-tx' = "#33A02C", 'IL7R_CD4 Shared post-tx' = "#7570B3",
+                  #'NR4A2_CD8 R-spec post-tx' = 'indianred1', 'CXCL13_Tcells R-spec post-tx' = 'indianred2', 
+                  'Tregs R-spec post-tx' = "#55A1B1", #'IL7R_CD4 R-spec post-tx' = 'indianred4',
+                  'ITGAE_CD8 R-spec post-tx' = "#33A02C", 'GZMK_CD8 R-spec post-tx' = "#8DD3C7",
+                  "NotSig_PostTx" = 'grey50') 
+
+colors <- c(left_colors, right_colors, link_colors2)
+right_strata_order <- c("NotSig_PostTx", "R-spec", "NR-spec", "Shared")
+
+
+all_data <- all_data %>%
+  separate(Var1, into = c("Var1_Receiver", "Var1_Specificity"), sep = " ", remove = FALSE)
+
+library(ggnewscale)
+
+all_data$Var1_SpecificityOnly <- gsub(".*\\s(Shared|R-spec|NR-spec).*", "\\1", all_data$Var1)
+
+
+ggplot(data = all_data, aes(axis1 = Var2, axis2 = Var1_SpecificityOnly, y = Freq)) +
+  geom_alluvium(aes(fill = Var1)) + # Keep original Var1 for color
+  geom_stratum(aes(fill = after_stat(stratum)), color = "black", size = 0.5) +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), check_overlap = TRUE, size = 3) +
+  theme_void() +
+  scale_fill_manual(values = colors) +
+  guides(fill = "none") +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank()
+  )
+
+ggsave('Paired_RSpecNoSigPreTx_Looped_include_PreTxSpec_sankey_plot_bloodlike_mono_RspecPre_toPost.pdf', width = 8.5, height = 10)
+write.csv(all_data, file = 'Paired_RSpecNoSigPreTx_Looped_include_PreTxSpec_sankey_plot_bloodlike_mono_RspecPre_toPost.csv')
+
+```
+
+```{r Fig 3e}
+luoma$patient_clusters <- paste(luoma$Patient_ID, luoma$consensus_clusters)
+
+
+luoma_pre <- luoma[,luoma$Stage == 'Pre-Tx']
+luoma_post <- luoma[,luoma$Stage == 'Post-Tx']
+
+
+plot_ligand_sender_boxplot <- function(object=luoma, 
+                                       assay = NULL, 
+                                       features = 'CXCL9',
+                                       split.by = 'response_binary', 
+                                       scale.by = 'radius', 
+                                       group.by = 'patient_clusters', 
+                                       senders = 'mregDC_LAMP3', 
+                                       stage = 'Pre-Tx',
+                                       out.width = 8,
+                                       out.height = 6,
+                                       col.use = c('#2196F3', '#FF8A80'),
+                                       show_legend = TRUE){  # New parameter
+  object <- object[,object$Stage == stage]
+  
+  assay <- assay %||% DefaultAssay(object = object)
+  DefaultAssay(object = object) <- assay
+  split.colors <- !is.null(x = split.by) 
+  scale.func <- switch(EXPR = scale.by, size = scale_size, 
+                       radius = scale_radius, stop("'scale.by' must be either 'size' or 'radius'"))
+  feature.groups <- NULL
+  
+  cells <- unlist(x = CellsByIdentities(object = object, cells = colnames(object[[assay]]), 
+                                        idents = NULL))
+  data.features <- FetchData(object = object, vars = features, 
+                             cells = cells)
+  data.features$id <- object[[group.by, drop = TRUE]][cells, drop = TRUE]
+  if (!is.factor(x = data.features$id)) {
+    data.features$id <- factor(x = data.features$id)
+  }
+  id.levels <- levels(x = data.features$id)
+  
+  data.features$id <- as.vector(x = data.features$id)
+  splits <- FetchData(object = object, vars = split.by)[cells, 
+                                                        split.by]
+  data.features$id <- paste(data.features$id, splits, 
+                            sep = "_")
+  
+  data.features <- data.features[grep(senders, data.features$id),]
+  
+  data.plot <- lapply(X = unique(x = data.features$id), FUN = function(ident) {
+    data.use <- data.features[data.features$id == ident, 
+                              1:(ncol(x = data.features) - 1), drop = FALSE]
+    avg.exp <- apply(X = data.use, MARGIN = 2, FUN = function(x) {
+      return(mean(x = expm1(x = x)))
+    })
+    pct.exp <- apply(X = data.use, MARGIN = 2, FUN = PercentAbove, 
+                     threshold = 0)
+    return(list(avg.exp = avg.exp, pct.exp = pct.exp))
+  })
+  
+  names(x = data.plot) <- unique(x = data.features$id)
+  
+  data.plot <- lapply(X = names(x = data.plot), FUN = function(x) {
+    data.use <- as.data.frame(x = data.plot[[x]])
+    data.use$features.plot <- rownames(x = data.use)
+    data.use$id <- x
+    return(data.use)
+  })
+  data.plot <- do.call(what = "rbind", args = data.plot)
+  data.plot <- data.plot %>% 
+    separate(id, into = c('patient', 'group'), sep = ' ', remove = F)
+  
+  wc1 <- data.plot$pct.exp[grep('Non-responder', data.plot$id)]
+  wc2 <- data.plot$pct.exp[grep('Responder', data.plot$id)]
+  
+  wc <- wilcox.test(wc1, wc2, alternative = 'two.sided')
+  wc_p <- round(wc$p.value, digits = 3)
+  
+  data.plot$pct.exp <- data.plot$pct.exp * 100
+  
+  # Create the ggplot object
+  p <- ggplot(data.plot) + 
+    geom_boxplot(aes(x = group, y = pct.exp, color = group, fill = group), position = position_dodge(), alpha = 0.5, 
+                 outlier.color = NA) + 
+    geom_point(aes(x = group, y = pct.exp, color = group), alpha = 0.8, position = position_jitterdodge()) + 
+    facet_wrap(~ features.plot, scales = 'free', nrow = 1) + 
+    theme_bw() + 
+    theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), axis.title.x = element_blank(), 
+          strip.text = element_text(size = 12)) + 
+    scale_shape_manual(values = 1:5) + 
+    scale_color_manual(values= col.use) +
+    scale_fill_manual(values = col.use) +
+    theme(legend.key.size = unit(1, 'cm'), legend.title = element_text(size=30), legend.text = element_text(size=20),
+          axis.text=element_text(size=16),axis.title=element_text(size=20)) + 
+    ggtitle(as.character(wc_p)) +
+    labs(y= paste("% ", senders, sep = ''))
+  
+  # Add condition to remove legend if show_legend is FALSE
+  if (!show_legend) {
+    p <- p + theme(legend.position = "none")
+  }
+  
+  # Open PDF device, print the plot, and close the device
+  pdf(paste(stage, senders, features, 'boxplot_by_response.pdf', sep = '_'), width = out.width, height = out.height)
+  print(p)
+  dev.off()
+  
+  # Return the plot object (optional)
+  return(p)
+}
+
+
+
+
+
+
+post_mono_thbs1 <- plot_ligand_sender_boxplot(object = luoma_post, 
+                                             features = 'THBS1', 
+                                             group.by = 'patient_clusters',
+                                             split.by = 'response_binary',
+                                             senders = 'Blood-like_CD14_Mono', 
+                                             stage = 'Post-Tx',
+                                             col.use = c('#2196F3', '#FF8A80'), 
+                                             show_legend = FALSE)
+post_mono_cxcl16 <- plot_ligand_sender_boxplot(object = luoma_post, 
+                                              features = 'CXCL16', 
+                                              group.by = 'patient_clusters',
+                                              split.by = 'response_binary',
+                                              senders = 'Blood-like_CD14_Mono', 
+                                              stage = 'Post-Tx',
+                                              col.use = c('#2196F3', '#FF8A80'), 
+                                              show_legend = FALSE)
+post_mono_cd86 <- plot_ligand_sender_boxplot(object = luoma_post, 
+                                         features = 'CD86', 
+                                         group.by = 'patient_clusters',
+                                         split.by = 'response_binary',
+                                         senders = 'Blood-like_CD14_Mono', 
+                                         stage = 'Post-Tx',
+                                         col.use = c('#2196F3', '#FF8A80'), 
+                                         show_legend = FALSE)
+p <- cowplot::plot_grid(post_mono_thbs1, post_mono_cxcl16, post_mono_cd86, ncol = 3)
+ggplot2::ggsave("blood-like_CD14_mono_ligand_plots.pdf", p, width = 4.5, height = 4, units = "in")
+
+
+
+
+
+
+post_nr4a2_cd8_cxcr6 <- plot_ligand_sender_boxplot(object = luoma_post, 
+                                              features = 'CXCR6', 
+                                              group.by = 'patient_clusters',
+                                              split.by = 'response_binary',
+                                              senders = 'NR4A2_CD8', 
+                                              stage = 'Post-Tx',
+                                              col.use = c('#2196F3', '#FF8A80'), 
+                                              show_legend = FALSE)
+post_itgae_cd8_ctla4 <- plot_ligand_sender_boxplot(object = luoma_post, 
+                                               features = 'CTLA4', 
+                                               group.by = 'patient_clusters',
+                                               split.by = 'response_binary',
+                                               senders = 'ITGAE_CD8', 
+                                               stage = 'Post-Tx',
+                                               col.use = c('#2196F3', '#FF8A80'), 
+                                               show_legend = FALSE)
+post_itgae_cd8_cd28 <- plot_ligand_sender_boxplot(object = luoma_post, 
+                                             features = 'CD28', 
+                                             group.by = 'patient_clusters',
+                                             split.by = 'response_binary',
+                                             senders = 'ITGAE_CD8', 
+                                             stage = 'Post-Tx',
+                                             col.use = c('#2196F3', '#FF8A80'), 
+                                             show_legend = FALSE)
+post_nr4a2_cd8_cd47 <- plot_ligand_sender_boxplot(object = luoma_post, 
+                                                  features = 'CD47', 
+                                                  group.by = 'patient_clusters',
+                                                  split.by = 'response_binary',
+                                                  senders = 'NR4A2_CD8', 
+                                                  stage = 'Post-Tx',
+                                                  col.use = c('#2196F3', '#FF8A80'), 
+                                                  show_legend = FALSE)
+p <- cowplot::plot_grid(post_nr4a2_cd8_cxcr6, post_itgae_cd8_ctla4, post_itgae_cd8_cd28, post_nr4a2_cd8_cd47, ncol = 4)
+ggplot2::ggsave("blood-like_CD14_mono_receptor_plots.pdf", p, width = 6, height = 4, units = "in")
+```
+
+```{r Prep for Fig 3f--running CellChat for individual patients from Luoma}
+DimPlot(luoma, group.by = 'consensus_clusters')
+
+process_cellchat <- function(seu1, out, path_response, meta, tx_stage = NULL) {
+  
+  require(CellChat)
+  require(future)
+  require(Seurat)
+  
+  # Filter seu1 by tx_stage if provided
+  if (!is.null(tx_stage)) {
+    seu1 <- seu1[, seu1$Stage == tx_stage]
+  }
+  
+  # Filter seu1 by path_response
+  seu <- seu1[, seu1$response_binary %in% path_response]
+  
+  # Set cell identities
+  Idents(seu) <- meta
+  
+  # Create CellChat object
+  cellchat <- createCellChat(seu)
+  CellChatDB <- CellChatDB.human 
+  CellChatDB.use <- CellChatDB # use the default CellChatDB
+  cellchat@DB <- CellChatDB.use # set the used database in the object
+  
+  # Subset data
+  cellchat <- subsetData(cellchat)
+  
+  # Parallel processing
+  future::plan("multisession", workers = 4)
+  
+  # Identify over and under expressed genes/interactions
+  cellchat <- identifyOverExpressedGenes(cellchat)
+  cellchat <- identifyOverExpressedInteractions(cellchat)
+  
+  # Compute communication probability
+  cellchat <- computeCommunProb(cellchat)
+  
+  # Filter out communication if very few cells in certain cell groups
+  cellchat <- filterCommunication(cellchat, min.cells = 10)
+  
+  # Compute communication probability pathway
+  cellchat <- computeCommunProbPathway(cellchat)
+  
+  # Aggregate network
+  cellchat <- aggregateNet(cellchat)
+  
+  # Save objects
+  if(!is.null(tx_stage)){
+    save(cellchat, seu1, seu, CellChatDB, CellChatDB.use, file = paste(out, tx_stage, '_', path_response, '_grouped_cellchat_objects.rda', sep = ''))
+  }
+  
+  if(is.null(tx_stage)){
+    save(cellchat, seu1, seu, CellChatDB, CellChatDB.use, file = paste(out, path_response, '_grouped_cellchat_objects.rda', sep = ''))
+  }
+  
+  # return cellchat object
+  return(cellchat)
+}
+
+
+
+# calculating the pre-treatment for each patient
+luoma_pre <- luoma[,luoma$Stage == 'Pre-Tx']
+pats <- unique(luoma_pre$Patient_ID)
+
+for (patient in pats){
+  seu <- luoma_pre[,luoma_pre$Patient_ID == patient]
+  response <- unique(seu$response_binary)
+  cellchat <- process_cellchat(seu, out = paste(patient, response, sep = '_'), meta = 'consensus_clusters', path_response = response, tx_stage = 'Pre-Tx')
+  save(cellchat, file = paste('Pre_tx', response, patient, 'workspace.rda', sep = '_'))
+}
+
+# calculating the pre-treatment for each patient
+luoma_post <- luoma[,luoma$Stage == 'Post-Tx']
+pats <- unique(luoma_post$Patient_ID)
+
+for (patient in pats){
+  seu <- luoma_post[,luoma_post$Patient_ID == patient]
+  response <- unique(seu$response_binary)
+  cellchat <- process_cellchat(seu, out = paste(patient, response, sep = '_'), meta = 'consensus_clusters', path_response = response, tx_stage = 'Post-Tx')
+  save(cellchat, file = paste('Post_tx', response, patient, 'workspace.rda', sep = '_'))
+}
+
+
+
+# determine if there are subsets not present in all objects so we can remove them
+all_levels <- unique(c(levels(r_pre_cellchat@idents),
+                       levels(nr_pre_cellchat@idents), 
+                       levels(r_post_cellchat@idents), 
+                       levels(nr_post_cellchat@idents)))
+
+cell_order1 <- levels(r_pre_cellchat@idents) 
+cell_order2 <- levels(nr_pre_cellchat@idents) 
+cell_order3 <- levels(r_post_cellchat@idents) 
+cell_order4 <- levels(nr_post_cellchat@idents) 
+
+cell_order <- intersect(cell_order1, cell_order2)
+cell_order <- intersect(cell_order, cell_order3)
+cell_order <- intersect(cell_order, cell_order4)
+
+print(setdiff(all_levels, cell_order))
+# character(0)
+
+
+# establishing the same cell subset order before merging
+r_pre_cellchat <- CellChat::updateClusterLabels(r_pre_cellchat, new.order = cell_order) %seed% TRUE
+nr_pre_cellchat <- CellChat::updateClusterLabels(nr_pre_cellchat, new.order = cell_order) %seed% TRUE
+r_post_cellchat <- CellChat::updateClusterLabels(r_post_cellchat, new.order = cell_order) %seed% TRUE
+nr_post_cellchat <- CellChat::updateClusterLabels(nr_post_cellchat, new.order = cell_order) %seed% TRUE
+
+# merging together the pre-tx (R and NR) and post-tx (R and NR)
+pre.object.list <- list(NR = nr_pre_cellchat, R = r_pre_cellchat)
+pre.cellchat <- mergeCellChat(pre.object.list, add.names = names(pre.object.list))
+post.object.list <- list(NR = nr_post_cellchat, R = r_post_cellchat)
+post.cellchat <- mergeCellChat(post.object.list, add.names = names(post.object.list))
+
+#save(pre.cellchat, post.cellchat, r_pre_cellchat, nr_pre_cellchat, r_post_cellchat, nr_post_cellchat, pre.object.list, post.object.list, 
+#     file = '/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/individual_patients_all_cellchat_objs.rda')
+
+```
+
+```{r Fig 3f}
+# Initialize empty lists to store the results
+pre_tx_list <- list()
+post_tx_list <- list()
+
+# Process each workspace file
+for (file in workspace_files) {
+  # Load the workspace
+  load(file)
+  
+  # Check if cellchat object exists
+  if (exists("cellchat")) {
+    # Run subsetCommunication function
+    signaling <- subsetCommunication(cellchat)
+    
+    # Extract the name from the file (everything before the second underscore)
+    file_name <- basename(file)
+    name_parts <- strsplit(file_name, "_")[[1]]
+    list_name <- paste(name_parts[1:4], collapse = "_")  # Adjusted to skip "Pre_tx" or "Post_tx"
+    print(list_name)
+    
+    # Determine which list to add the signaling dataframe to
+    if (grepl("^Pre_tx", file_name)) {
+      pre_tx_list[[list_name]] <- signaling
+    } else if (grepl("^Post_tx", file_name)) {
+      post_tx_list[[list_name]] <- signaling
+    } else {
+      warning(paste("File doesn't start with Pre_tx or Post_tx:", file))
+    }
+    
+    # Clean up the environment
+    rm(cellchat, signaling)
+  } else {
+    warning(paste("cellchat object not found in file:", file))
+  }
+}
+
+# Define the interactions we're interested in
+interactions_of_interest <- c("CXCL16_CXCR6", "THBS1_CD47", "CD86_CTLA4")
+
+# Function to subset a dataframe based on interactions
+subset_interactions <- function(df) {
+  df[df$interaction_name %in% interactions_of_interest, ]
+}
+
+# Subset pre_tx_list
+pre_tx_list_subset <- lapply(pre_tx_list, subset_interactions)
+
+# Subset post_tx_list
+post_tx_list_subset <- lapply(post_tx_list, subset_interactions)
+
+# Define the source and target strings we're interested in
+source_match <- "Blood-like_CD14_Mono"
+target_matches <- c("NR4A2_CD8", "ITGAE_CD8")
+
+# Function to subset a dataframe based on source and target
+subset_source_target <- function(df) {
+  df[df$source == source_match & df$target %in% target_matches, ]
+}
+
+# Apply the subsetting to pre_tx_list_subset
+pre_tx_list_subset_final <- lapply(pre_tx_list_subset, subset_source_target)
+
+# Apply the subsetting to post_tx_list_subset
+post_tx_list_subset_final <- lapply(post_tx_list_subset, subset_source_target)
+
+# Define the columns we want to remove
+columns_to_remove <- c("source", "target", "ligand", "receptor", "pval", 
+                       "interaction_name_2", "pathway_name", "annotation", "evidence")
+
+# Function to remove specified columns from a dataframe
+remove_columns <- function(df) {
+  df[, !(names(df) %in% columns_to_remove), drop = FALSE]
+}
+
+# Apply the column removal to pre_tx_list_subset_final
+pre_tx_list_final <- lapply(pre_tx_list_subset_final, remove_columns)
+
+# Apply the column removal to post_tx_list_subset_final
+post_tx_list_final <- lapply(post_tx_list_subset_final, remove_columns)
+
+# Remove any empty dataframes from the lists
+pre_tx_list_final <- pre_tx_list_final[sapply(pre_tx_list_final, nrow) > 0]
+post_tx_list_final <- post_tx_list_final[sapply(post_tx_list_final, nrow) > 0]
+
+# Function to sum 'prob' by 'interaction_name'
+sum_prob_by_interaction <- function(df) {
+  if ("prob" %in% colnames(df) && "interaction_name" %in% colnames(df)) {
+    summed_df <- aggregate(prob ~ interaction_name, data = df, sum)
+    return(summed_df)
+  } else {
+    warning("Required columns 'prob' and/or 'interaction_name' not found in dataframe")
+    return(df)
+  }
+}
+
+# Apply the summing function to pre_tx_list_final
+pre_tx_list_summed <- lapply(pre_tx_list_final, sum_prob_by_interaction)
+
+# Apply the summing function to post_tx_list_final
+post_tx_list_summed <- lapply(post_tx_list_final, sum_prob_by_interaction)
+
+
+# Function to add list name as a column and return the dataframe
+add_name_column <- function(df, name) {
+  df %>% mutate(sample_name = name)
+}
+
+# Process pre_tx list
+pre_tx_combined <- pre_tx_list_summed %>%
+  imap_dfr(~add_name_column(.x, .y))
+
+# Process post_tx list
+post_tx_combined <- post_tx_list_summed %>%
+  imap_dfr(~add_name_column(.x, .y))
+
+
+# Function to split sample_name into response and patient_id
+split_sample_name <- function(df) {
+  df %>%
+    mutate(
+      response = str_extract(sample_name, "(?<=_)[^_]+(?=_[^_]+$)"),
+      patient_id = str_extract(sample_name, "[^_]+$"),
+      .keep = "all"  # This keeps all columns, including the original sample_name
+    )
+}
+
+# Apply the function to pre_tx_combined
+pre_tx_combined <- pre_tx_combined %>%
+  split_sample_name()
+
+# Apply the function to post_tx_combined
+post_tx_combined <- post_tx_combined %>%
+  split_sample_name()
+
+# Function to create the plot (can be used for both pre_tx and post_tx)
+create_plot <- function(data, title) {
+  ggplot(data) + 
+    geom_boxplot(aes(x = response, y = prob, color = response, fill = response), 
+                 position = position_dodge(), alpha = 0.5, outlier.color = NA) + 
+    geom_point(aes(x = response, y = prob, color = response), 
+               alpha = 0.8, position = position_jitterdodge()) + 
+    facet_wrap(~ interaction_name, scales = 'free', nrow = 1) + 
+    theme_bw() + 
+    theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), axis.title.x = element_blank(), 
+          strip.text = element_text(size = 12)) + 
+    scale_color_manual(values = c('#2196F3', '#FF8A80')) +
+    scale_fill_manual(values = c('#2196F3', '#FF8A80')) +
+    theme(legend.position = 'none',
+          axis.title.y = element_text(size = 16)) + 
+    labs(y = "Probability", title = title)
+}
+
+# Create plots for post_tx and pre_tx
+create_plot(post_tx_combined, "Post-treatment Interaction Probabilities")
+ggsave('cellchat_score_CXCL16_CXCR6_THBS1_CD47_CD86_CTLA4.pdf', width = 6, height = 3)
+```
+
