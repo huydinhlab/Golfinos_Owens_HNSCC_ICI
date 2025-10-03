@@ -31,7 +31,7 @@ color_clusters <- c("#DC050C", "#FB8072", "#1965B0", "#7BAFDE", "#882E72", "#B17
                     "#808000","#AEAE5C", "#1E90FF", "#00BFFF", "#56FF0D", "#FFFF00")
 
 load("/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/CosMX_RNA_merged.rda")
-load("/Volumes/hqdinh2/Projects/HNC_SPORE/CosMX_TMA/Protein-data/Analysis/CosMX_protein_annot_cluster.rda")
+load("/Volumes/hqdinh2/Projects/2.HNC_SPORE_SingleCell_Spatial/CosMX_TMA/Protein-data/Analysis/CosMX_protein_annot_cluster.rda")
 #load("/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/CosMX_protein_annot_cluster.rda")
 ```
 
@@ -254,6 +254,7 @@ freq_plot <- function(SEU, metadata, split.meta = 'tissue_hpv', graph_type = c('
       geom_point(aes(x = Group, y = Freqs, color = Group), alpha = 0.8, position = position_jitterdodge()) + 
       facet_wrap(~ Cluster, scales = 'free', nrow = 2) + 
       theme_bw() + 
+      stat_compare_means(aes(x = Group, y = Freqs), label.y.npc = 0.85) +
       theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), axis.title.x = element_blank(), 
             strip.text = element_text(size = 12), panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
       scale_shape_manual(values = 1:5) + 
@@ -712,80 +713,3 @@ ggplot(meta[meta$Response == 'NR',], aes(x = x_pixel, y = y_pixel, color = color
   scale_alpha_identity() 
 
 ggsave(paste('RNA_DC_T_iCAF_Tumor_NR', 'multicolor_FOV_plotting.pdf', sep = '_'), width = 14, height = 13)
-```
-
-```{r Fig 2e--DC DE genes (5 immune NHs)}
-CosMX_RNA_merged <- CosMX_RNA_merged %>%
-  Seurat::AddMetaData(
-    metadata = case_when(
-      CosMX_RNA_merged$k10_NhCoord20_anno == "Tumor_Immune_Mixed" ~ 'Tumor_Immune_Tcell_High',
-      CosMX_RNA_merged$k10_NhCoord20_anno == "Macrophage_High" ~ "Immune_Macrophage_High",
-      CosMX_RNA_merged$k10_NhCoord20_anno == "DC_T_iCAF_Tumor_Mixed" ~ "ap_iCAF_Immune_Mixed",
-      CosMX_RNA_merged$k10_NhCoord20_anno == "CAF_Immune_Mixed" ~ "myCAF_Immune_Mixed",
-      TRUE ~ as.character(CosMX_RNA_merged$k10_NhCoord20_anno)
-    ),
-    col.name = "k10_NhCoord20_anno_new"
-  )
-
-nhs <- unique(CosMX_RNA_merged$k10_NhCoord20_anno_new)
-#[1] "Endothelials"          "Bcells_Plasma"         "Myeloid_T_Mixed"       "CAFs"                  "DC_T_iCAF_Tumor_Mixed" "Macrophage_High"       "Immune_Mixed_CD4Thi"  
-#[8] "Tumor_High"            "CD8T+_Tumor_Mixed"      
-
-immune_nhs <- nhs[c(3:6, 9)]
-
-RNA_mini <- CosMX_RNA_merged[,CosMX_RNA_merged$k10_NhCoord20_anno_new %in% c(immune_nhs)] # new name DC_T_iCAF...
-
-RNA_mini$cellType_response <- paste(RNA_mini$annot_cluster2, RNA_mini$Response)
-
-Idents(RNA_mini) <- 'cellType_response'
-
-degs <- FindMarkers(RNA_mini, group.by = 'cellType_response', ident.1 = 'DCs R', ident.2 = 'DCs NR', logfc.threshold = 0.1)
-degs <- degs[grep('NegPrb', rownames(degs), invert = T),]
-
-cellchatdb <- CellChat::CellChatDB.human$interaction
-lrs <- c(cellchatdb$ligand, cellchatdb$receptor)
-labs2 <- intersect(rownames(degs), lrs)
-
-labs2 <- grep('CXC|CCL|CCR|CXCR', rownames(degs), value = T)
-
-# Create a subset of labs2 containing only significant genes
-significant_labs2 <- labs2[labs2 %in% rownames(degs[degs$p_val_adj < 0.05 & abs(degs$avg_log2FC) > 0.10,])]
-
-# Create a subset of labs2 containing only significant downregulated genes
-significant_down <- labs2[labs2 %in% rownames(degs[degs$p_val_adj < 0.05 & degs$avg_log2FC < -0.10,])]
-
-# Create a subset of all significant upregulated genes
-significant_up <- rownames(degs[degs$p_val_adj < 0.05 & degs$avg_log2FC > 0.10,])
-
-add_labs <- c('CXCL9', 'CXCL10', 'CXCL11', 'CXCL16', 'CXCR3', 'CXCR6')
-
-pdf('NoNegPrb_Volcano_plot_DCs.pdf', width = 12, height = 10)
-EnhancedVolcano(degs,
-    lab = rownames(degs),
-    selectLab = c(significant_down, significant_up, add_labs),
-    x = 'avg_log2FC',
-    y = 'p_val_adj',
-    pCutoff = 0.05,
-    drawConnectors = TRUE,
-    max.overlaps = Inf,
-    min.segment.length = 0,
-    directionConnectors = 'both',
-    arrowheads = FALSE, 
-    FCcutoff = 0.10,
-    pointSize = 4,
-    labSize = 5.0,
-    xlim = c(-1, 1),
-    title = '5 Immune NHs NR<-->R')
-dev.off()
-```
-
-```{r Fig 2f--Dotplots (DC_T_iCAF NH)}
-DotPlot(CosMX_RNA_merged[,CosMX_RNA_merged$k10_NhCoord20_anno == "Myeloid_K17+_Tumor_Mixed"  & CosMX_RNA_merged$annot_cluster2 %in% c('Macrophages', 'Monocytes', 'DCs', 'TcellsCD8+', 'Tcells_CD4+', 'Tregs')], 
-        group.by = 'annot_cluster2', features = c('CXCL9', 'CXCL10', 'CXCR3'), split.by = 'Response', cols = 'RdBu', col.min = 0)
-ggsave('CXCL9_CXCL10_CXCR3_Mac_Mon_DC_CD8_CD4_Myeloid_K17_Tumor_Mixed_NH.pdf', width = 7, height = 5)
-
-
-DotPlot(CosMX_RNA_merged[,CosMX_RNA_merged$k10_NhCoord20_anno == "DC_T_iCAF_Tumor_Mixed"  & CosMX_RNA_merged$annot_cluster2 %in% c('Macrophages', 'Monocytes', 'DCs', 'TcellsCD8+', 'Tcells_CD4+', 'Tregs')], 
-        group.by = 'annot_cluster2', features = c('CXCL9', 'CXCL10', 'CXCR3'), split.by = 'Response', cols = 'RdBu', col.min = 0)
-ggsave('CXCL9_CXCL10_CXCR3_apCAF_iCAF_Immune_Mixed_NH.pdf', width = 7, height = 5)
-```
