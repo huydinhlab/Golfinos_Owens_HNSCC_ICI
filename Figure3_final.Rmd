@@ -1,0 +1,591 @@
+---
+title: "Figure4"
+author: "Athena Golfinos-Owens" - "Huy Dinh editted 2025-09-25"
+date: "2025-01-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(Seurat)
+library(dplyr)
+library(tidyr)
+library(readxl)
+library(CellChat)
+library(DescTools)
+library(circlize)
+library(openxlsx)
+library(ComplexHeatmap)
+library(ggplot2)
+library(ggrepel)
+library(grid)
+library(future)
+
+```{r Fig 3A--Running per Neighborhood CellChat for heatmap}
+library(Seurat)
+library(CellChat)
+library(patchwork)
+library(future)
+
+load("./CosMX_RNA_merged.rda")
+
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path)) 
+print(getwd())
+
+CosMX_RNA_merged$k10_NhCoord20_anno[CosMX_RNA_merged$k10_NhCoord20_anno == "Myeloid_K17+_Tumor_Mixed"] <- 'Myeloid_K17_Tumor_Mixed'
+
+# Get unique entries from k10_NhCoord20_anno
+unique_entries <- unique(CosMX_RNA_merged$k10_NhCoord20_anno)
+
+# Define the analysis function
+run_analysis <- function(entry) {
+  cosmx_rna_nh <- CosMX_RNA_merged[,grep(entry, CosMX_RNA_merged$k10_NhCoord20_anno)]
+  
+  data.input1 = Seurat::GetAssayData(cosmx_rna_nh[,cosmx_rna_nh$Response == 'R'], slot = "data", assay = "SCT")
+  data.input2 = Seurat::GetAssayData(cosmx_rna_nh[,cosmx_rna_nh$Response == 'NR'], slot = "data", assay = "SCT")
+  
+  genes.common <- intersect(rownames(data.input1), rownames(data.input2))
+  colnames(data.input1) <- paste0("R_", colnames(data.input1))
+  colnames(data.input2) <- paste0("NR_", colnames(data.input2))
+  
+  meta1 = data.frame(labels = cosmx_rna_nh[,cosmx_rna_nh$Response == 'R']$annot_cluster2, samples = cosmx_rna_nh[,cosmx_rna_nh$Response == 'R']$tma_fov_id)
+  meta2 = data.frame(labels = cosmx_rna_nh[,cosmx_rna_nh$Response == 'NR']$annot_cluster2, samples = cosmx_rna_nh[,cosmx_rna_nh$Response == 'NR']$tma_fov_id)
+  
+  rownames(meta1) <- colnames(data.input1)
+  rownames(meta2) <- colnames(data.input2)
+  meta1$labels <- factor(meta1$labels, levels = unique(meta1$labels))
+  meta1$samples <- factor(meta1$samples, levels = unique(meta1$samples))
+  meta2$labels <- factor(meta2$labels, levels = unique(meta2$labels))
+  meta2$samples <- factor(meta2$samples, levels = unique(meta2$samples))
+  
+  r_cellchat <- createCellChat(object = data.input1, meta = meta1, group.by = "labels", datatype = "RNA")
+  nr_cellchat <- createCellChat(object = data.input2, meta = meta2, group.by = "labels", datatype = "RNA")
+  
+  CellChatDB <- CellChatDB.human 
+  CellChatDB.use <- subsetDB(CellChatDB)
+  
+  r_cellchat@DB <- CellChatDB.use
+  nr_cellchat@DB <- CellChatDB.use
+  
+  r_cellchat <- subsetData(r_cellchat)
+  future::plan("multisession", workers = 4) 
+  r_cellchat <- identifyOverExpressedGenes(r_cellchat)
+  r_cellchat <- identifyOverExpressedInteractions(r_cellchat)
+  r_cellchat <- computeCommunProb(r_cellchat, type = "truncatedMean", trim = 0.1, distance.use = F)
+  r_cellchat <- filterCommunication(r_cellchat, min.cells = 10)
+  r_cellchat <- computeCommunProbPathway(r_cellchat)
+  r_cellchat <- aggregateNet(r_cellchat)
+  
+  nr_cellchat <- subsetData(nr_cellchat)
+  future::plan("multisession", workers = 4) 
+  nr_cellchat <- identifyOverExpressedGenes(nr_cellchat)
+  nr_cellchat <- identifyOverExpressedInteractions(nr_cellchat)
+  nr_cellchat <- computeCommunProb(nr_cellchat, type = "truncatedMean", trim = 0.1, distance.use = F)
+  nr_cellchat <- filterCommunication(nr_cellchat, min.cells = 10)
+  nr_cellchat <- computeCommunProbPathway(nr_cellchat)
+  nr_cellchat <- aggregateNet(nr_cellchat)
+  
+  all_levels <- unique(c(levels(r_cellchat@idents), levels(nr_cellchat@idents)))
+  cell_order1 <- levels(r_cellchat@idents) 
+  cell_order2 <- levels(nr_cellchat@idents)
+  cell_order <- intersect(cell_order1, cell_order2)
+  
+  r_cellchat <- CellChat::updateClusterLabels(r_cellchat, new.order = cell_order) %seed% TRUE
+  nr_cellchat <- CellChat::updateClusterLabels(nr_cellchat, new.order = cell_order) %seed% TRUE
+  
+  pathways.show <- c("CXCL") 
+  
+  color_clusters <- c("#DC050C", "#FB8072", "#1965B0", "#7BAFDE", "#882E72", "#B17BA6", "#FF7F00", "#FDB462",
+                      "#E7298A", "#E78AC3","#33A02C", "#B2DF8A", "#55A1B1", "#8DD3C7", "#A6761D", "#E6AB02", 
+                      "#7570B3", "#BEAED4", "#666666", "#999999", "#AA8282", "#D4B7B7", "#8600BF", "#BA5CE3", 
+                      "#808000","#AEAE5C", "#1E90FF", "#00BFFF", "#56FF0D", "#FFFF00")
+  
+  p1 <- netVisual_aggregate(nr_cellchat, signaling = pathways.show, layout = "circle", 
+                            sources.use = grep('Mon|Mac|DC', meta1$labels, value = T), 
+                            targets.use = grep('Tcells|CD8|CD4|Treg', meta1$labels, value = T), remove.isolate = T)
+  pdf(paste0(entry, '_NR_circos.pdf'), width = 6, height = 6)
+  print(p1)
+  dev.off() 
+  
+  p2 <- netVisual_aggregate(r_cellchat, signaling = pathways.show, layout = "circle", 
+                            sources.use = grep('Mon|Mac|DC', meta1$labels, value = T), 
+                            targets.use = grep('Tcells|CD8|CD4|Treg', meta1$labels, value = T), remove.isolate = T)
+  pdf(paste0(entry, '_R_circos.pdf'), width = 6, height = 6)
+  print(p2)
+  dev.off()
+  
+  pdf(paste0(entry, '_myeloid_to_tcell_chord_diagram_NR_R.pdf'), pointsize = 12, height = 6, width = 9)
+  print(cowplot::plot_grid(p2, p1, ncol = 2))
+  dev.off()
+  
+  r <- subsetCommunication(r_cellchat, sources.use = grep('Mon|Mac|DC', meta1$labels, value = T), targets.use = grep('Tcells|CD8|CD4|Treg', meta1$labels, value = T))
+  nr <- subsetCommunication(nr_cellchat, sources.use = grep('Mon|Mac|DC', meta2$labels, value = T), targets.use = grep('Tcells|CD8|CD4|Treg', meta2$labels, value = T))
+  
+  r_cxcl <- subsetCommunication(r_cellchat, sources.use = grep('Mon|Mac|DC', meta1$labels, value = T), targets.use = grep('Tcells|CD8|CD4|Treg', meta1$labels, value = T), signaling = 'CXCL')
+  nr_cxcl <- subsetCommunication(nr_cellchat, sources.use = grep('Mon|Mac|DC', meta2$labels, value = T), targets.use = grep('Tcells|CD8|CD4|Treg', meta2$labels, value = T), signaling = 'CXCL')
+  
+  save(r_cellchat, nr_cellchat, CellChatDB, CellChatDB.use, cosmx_rna_nh, data.input1, data.input2, meta1, meta2,
+       file = paste0(entry, '_workspace.rda'))
+  
+  cellchat <- mergeCellChat(list(r_cellchat, nr_cellchat), add.names = c('Responder', 'Non-Responder'))
+  
+  gg1 <- rankNet(cellchat, mode = "comparison", measure = "weight", sources.use = grep('Mon|Mac|DC', meta1$labels, value = T), 
+                 targets.use = grep('Treg|CD4|CD8', meta1$labels, value = T), stacked = T, do.stat = TRUE, return.data = T)
+  gg2 <- rankNet(cellchat, mode = "comparison", measure = "weight", sources.use = grep('Mon|Mac|DC', meta1$labels, value = T), 
+                 targets.use = grep('Treg|CD4|CD8', meta1$labels, value = T), stacked = F, do.stat = TRUE, return.data = T)
+  
+  stacked_df <- gg1$signaling.contribution
+  unstacked_df <- gg2$signaling.contribution
+  
+  # Save additional results if needed
+  save(stacked_df, unstacked_df, file = paste0(entry, '_additional_results.rda'))
+}
+
+# Loop through unique entries and run the analysis
+for (entry in unique_entries) {
+  tryCatch({
+    cat("Processing entry:", entry, "\n")
+    run_analysis(entry)
+    cat("Completed processing for entry:", entry, "\n\n")
+  }, error = function(e) {
+    cat("Error processing entry:", entry, "\n")
+    cat("Error message:", conditionMessage(e), "\n\n")
+  })
+}
+
+```
+
+```{r Fig 4c--only myeloid senders!preparing pathway by probability dataframe for heatmap and plotting}
+library(dplyr)
+library(purrr)
+library(readr)
+library(CellChat)
+library(stringr)
+library(tidyr)
+library(ComplexHeatmap)
+library(circlize)
+library(RColorBrewer)
+library(ggraph)
+
+# Define file paths
+files <- c(
+  'Tumor_Immune_Mixed_workspace.rda',
+  'Myeloid_K17_Tumor_Mixed_workspace.rda',
+  'Macrophage_High_workspace.rda',
+  'DC_T_iCAF_Tumor_Mixed_workspace.rda',
+  'CAF_Immune_Mixed_workspace.rda'
+)
+
+# Set working directory
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+print(getwd())
+
+# Function to load workspace and extract CellChat objects
+load_cellchat_objects <- function(file_path) {
+  load(file_path)
+  
+  # Check if objects exist
+  if (!exists("nr_cellchat") || !exists("r_cellchat")) {
+    stop(paste("Missing nr_cellchat or r_cellchat in", file_path))
+  }
+  
+  list(
+    nr = nr_cellchat,
+    r = r_cellchat
+  )
+}
+
+# Function to extract the name
+extract_name <- function(file_path) {
+  file_name <- basename(file_path) # Gets filename
+  name <- gsub("_workspace\\.rda$", "", file_name)  # Removes suffix
+  return(name)
+}
+
+# Apply the function to all files and store in a list
+cellchat_list <- map(files, load_cellchat_objects)
+
+# Extract the names for the list
+names(cellchat_list) <- map_chr(files, extract_name)
+
+# Print the structure of the resulting list
+str(cellchat_list, max.level = 2)
+
+# Initialize list to store merged CellChat objects
+merged_cellchat_list <- list()
+
+# Merge CellChat objects for each neighborhood
+for (neighborhood in names(cellchat_list)) {
+  # Merge nr and r CellChat objects
+  nr <- cellchat_list[[neighborhood]]$nr
+  r <- cellchat_list[[neighborhood]]$r
+  
+  # Perform the merging
+  merged_cellchat <- tryCatch({
+    mergeCellChat(list(R = r, NR = nr), add.names = c("R", "NR"))
+  }, error = function(e) {
+    message(sprintf("Error merging %s: %s", neighborhood, e$message))
+    return(NULL)
+  })
+  
+  # Check the results
+  if (!is.null(merged_cellchat)) {
+    merged_cellchat_list[[neighborhood]] <- merged_cellchat
+  }
+}
+
+# Filter out NULL entries (failed merges)
+merged_cellchat_list <- merged_cellchat_list[!sapply(merged_cellchat_list, is.null)]
+
+# Get all unique pathways from merged objects
+all_pathways <- unique(merged_cellchat_list[[1]]@netP$R$pathways)
+
+# Initialize list to store results
+results_list <- list()
+
+# Loop through merged CellChat objects and pathways
+for (neighborhood in names(merged_cellchat_list)) {
+  merged_cellchat_obj <- merged_cellchat_list[[neighborhood]]
+  
+  # Initialize list for this neighborhood's results
+  neighborhood_results <- list()
+  
+  # Loop through pathways
+  for (pathway in all_pathways) {
+    tryCatch({
+      # Run netVisual_bubble and extract data
+      plot_data <- netVisual_bubble(
+        merged_cellchat_obj,
+        signaling = pathway,
+        sources.use = c('Macrophages', 'Monocytes', 'DCs'),
+        targets.use = c('TcellsCD8+', 'Tcells_CD4+', 'Tregs'),
+        remove.isolate = FALSE,
+        return.data = TRUE,
+        comparison = c(1, 2)
+      )
+      
+      # Add pathway and neighborhood information
+      result_df <- plot_data$communication %>%
+        mutate(
+          pathway = pathway,
+          neighborhood = neighborhood
+        )
+      
+      # Store results
+      neighborhood_results[[pathway]] <- result_df
+    }, error = function(e) {
+      message(sprintf("Error processing pathway %s in %s: %s",
+                      pathway, neighborhood, e$message))
+    })
+  }
+  
+  # Combine results for this neighborhood
+  if (length(neighborhood_results) > 0) {
+    combined_results <- bind_rows(neighborhood_results)
+    results_list[[neighborhood]] <- combined_results
+  }
+}
+
+# Combine all results into a single dataframe
+final_results <- bind_rows(results_list)
+
+# Print the structure of the final results
+str(final_results)
+
+final_results <- final_results %>%
+  mutate(
+    neighborhood = case_when(
+      neighborhood == "Tumor_Immune_Mixed" ~ 'Tumor_Immune_Tcell_High',
+      neighborhood == "Macrophage_High" ~ "Immune_Macrophage_High",
+      neighborhood == "DC_T_iCAF_Tumor_Mixed" ~ "ap_iCAF_Immune_Mixed",
+      neighborhood == "CAF_Immune_Mixed" ~ "myCAF_Immune_Mixed",
+      TRUE ~ as.character(neighborhood)
+    )
+  )
+
+
+# Save the results
+write.csv(final_results, "cellchat_netVisual_bubble_merged_results.csv", row.names = FALSE)
+
+combined_df <- read.csv("cellchat_netVisual_bubble_merged_results.csv")
+
+combined_df <- combined_df[!combined_df$pathway %in% c("MHC-I", 'MHC-II', 'COLLAGEN'),]
+
+library(dplyr)
+
+combined_df <- combined_df[!is.na(combined_df$prob),]
+
+combined_df <- combined_df %>%
+  group_by(neighborhood) %>%
+  mutate(
+    prob.original_rescaled = (prob.original - min(prob.original)) / (max(prob.original) - min(prob.original)),
+    prob_rescaled = (prob - min(prob)) / (max(prob) - min(prob))
+  ) %>%
+  ungroup()
+
+
+
+# Sanity checks
+sanity_check <- combined_df %>%
+  group_by(neighborhood) %>%
+  summarise(
+    min_prob_original = min(prob.original_rescaled),
+    max_prob_original = max(prob.original_rescaled),
+    min_prob = min(prob_rescaled),
+    max_prob = max(prob_rescaled)
+  )
+
+print(sanity_check)
+
+# Additional check for any NA values
+na_check <- combined_df %>%
+  summarise(
+    na_prob_original = sum(is.na(prob.original_rescaled)),
+    na_prob = sum(is.na(prob_rescaled))
+  )
+
+print(na_check)
+
+
+
+
+
+
+combined_df <- combined_df %>% 
+  select('source.target', 'interaction_name', 'neighborhood', 'prob_rescaled', 'pathway')
+combined_df$id <- paste(combined_df$source.target, combined_df$neighborhood)
+combined_df$id2 <- paste(combined_df$interaction_name, combined_df$pathway)
+
+#additional filter
+tmp <- combined_df
+#count_pathway <- plyr::count(combined_df$pathway)
+#combined_df <- combined_df[-which(combined_df$pathway %in% count_pathway$x[which(count_pathway$freq<3)]),]
+#combined_df <- combined_df[which(combined_df$pathway %in% c("IL1", "IL4", "IL16", "IL6")),]
+#combined_df <- tmp[which(tmp$pathway %in% c("CD40", "CD86", "CD80")),]
+combined_df <- tmp[which(tmp$pathway %in% c("CXCL", "CCL", "IL1", "IL16", "IL4", "IL6")),]
+
+
+anno_df_col <- combined_df 
+anno_df_row <- combined_df
+library(stringr)
+
+anno_df_col$Response <- str_extract(anno_df_col$source.target, "\\(([^)]+)\\)")
+anno_df_col$Response <- str_remove_all(anno_df_col$Response, "[()]")
+anno_df_col <- anno_df_col %>%
+  select('Response', 'id', 'neighborhood')
+anno_df_col <- unique(anno_df_col)
+library(tidyr)
+anno_df_col <- anno_df_col[!is.na(anno_df_col$Response),]
+
+anno_df_col <- anno_df_col %>%
+  separate("id", into = c("sender", "temp"), sep = "->", remove = FALSE) %>%
+  separate("temp", into = c("receiver", "response"), sep = "\\(", remove = TRUE)
+
+
+combined_df_wide <- combined_df %>% 
+  select('id', 'id2', 'prob_rescaled')
+combined_df_wide <- unique(combined_df_wide)
+combined_df_wide <- tidyr::pivot_wider(combined_df_wide, names_from = id, values_from = prob_rescaled)
+
+combined_df_wide <- as.data.frame(combined_df_wide[!is.na(combined_df_wide$id2),])
+combined_df_wide[is.na(combined_df_wide)] <- 0
+combined_df_wide <- combined_df_wide[grep('NA ', combined_df_wide$id, invert = T),]
+rownames(combined_df_wide) <- combined_df_wide$id2
+combined_df_wide$id2 <- NULL
+
+# Define a vector of distinct colors for your neighborhoods
+neighborhood_colors <- c(
+  "Tumor_Immune_Tcell_High" = "#E41A1C",
+  "Immune_Macrophage_High" = "#377EB8",
+  "Myeloid_K17_Tumor_Mixed" = "#4DAF4A",
+  "ap_iCAF_Immune_Mixed" = "#984EA3",
+  "myCAF_Immune_Mixed" = "#FF7F00"
+)
+
+response_colors <- c(
+  'R' = '#FF8A80',
+  'NR' = '#2196F3'
+)
+
+sender_colors <- c(
+  "Monocytes " = 'green',
+  "Macrophages " = 'green4',
+  "DCs " = 'navy'
+)
+
+receiver_colors <- c(
+  ' TcellsCD8+ ' = 'yellow',
+  ' Tcells_CD4+ ' = 'skyblue',
+  ' Tregs ' = 'orange'
+)
+
+# Create the column annotation
+col_anno <- ComplexHeatmap::HeatmapAnnotation(
+  Response = anno_df_col$Response,
+  Neighborhood = anno_df_col$neighborhood,
+  Sender = anno_df_col$sender,
+  Receiver = anno_df_col$receiver,
+  col = list(Neighborhood = neighborhood_colors, 
+             Response = response_colors,
+             Sender = sender_colors,
+             Receiver = receiver_colors),
+  show_legend = TRUE
+)
+
+
+#plot_labels <- sub("\\s*\\(.*", "", plot_ids)
+
+# Assuming 'combined_df_wide' is your data frame
+# Create shortened column names
+
+
+# remove NAs
+combined_df_wide <- combined_df_wide[,!colnames(combined_df_wide) %like% c('%NA %')]
+short_colnames <- sub("\\s*\\(.*", "", colnames(combined_df_wide))
+# Create the matrix with shortened column names
+mat <- as.matrix(combined_df_wide)
+colnames(mat) <- short_colnames
+
+anno_df_row <- data.frame(rownames(combined_df_wide))
+
+library(tidyr)
+anno_df_row <- anno_df_row %>% separate(`rownames.combined_df_wide.`, c("int", "pathway"), sep = " ", remove = F) %>%
+  select(`rownames.combined_df_wide.`, pathway) %>%
+  tibble::column_to_rownames("rownames.combined_df_wide.")
+
+anno_df_row$pathway[grep("IL",anno_df_row$pathway)] = "IL"
+
+# Create the column annotation
+row_ha <- ComplexHeatmap::rowAnnotation(
+  Pathway = anno_df_row$pathway,
+  #col = list(Neighborhood = neighborhood_colors),
+  col = list(Pathway = c(CCL = "#FFFF00", CXCL = "darkblue", IL = "#A6761D")),
+  show_legend = TRUE
+)
+
+
+pdf('Rescaled_noMHC_COLLAGEN_fromDP_nh_contribution_CXCL.pdf', height = 20, width = 18)
+# Now use this matrix in your Heatmap function
+
+set.seed(100)
+test = ComplexHeatmap::draw(ComplexHeatmap::Heatmap(mat,
+             name = "Probability",
+             #column_title = "Merged Column",
+             row_title = "Interaction Name",
+             right_annotation = row_ha,
+             top_annotation = col_anno,
+             show_row_names = TRUE,
+             show_column_names = TRUE,
+             column_names_rot = 90,
+             clustering_distance_columns = "euclidean",
+             clustering_method_columns = "ward.D",
+             clustering_distance_rows = "euclidean",
+             clustering_method_rows = "ward.D", 
+             cluster_column_slices = T,
+             column_names_max_height = unit(15, 'cm'), column_km = 7))
+test
+dev.off()
+```
+```{r Fig 4c-DotPlot of ligand (myeloid) and receptor (T cells) in tumor/immune/Tcell high NHs}
+load("./CosMX_TMA/CosMX_RNA_merged.rda")
+
+CosMX_RNA_merged <- CosMX_RNA_merged %>%
+  Seurat::AddMetaData(
+    metadata = case_when(
+      CosMX_RNA_merged$k10_NhCoord20_anno == "Tumor_Immune_Mixed" ~ 'Tumor_Immune_Tcell_High',
+      CosMX_RNA_merged$k10_NhCoord20_anno == "Macrophage_High" ~ "Immune_Macrophage_High",
+      CosMX_RNA_merged$k10_NhCoord20_anno == "DC_T_iCAF_Tumor_Mixed" ~ "ap_iCAF_Immune_Mixed",
+      CosMX_RNA_merged$k10_NhCoord20_anno == "CAF_Immune_Mixed" ~ "myCAF_Immune_Mixed",
+      TRUE ~ as.character(CosMX_RNA_merged$k10_NhCoord20_anno)
+    ), col.name = "k10_NhCoord20_anno_new"
+  )
+
+ unique(CosMX_RNA_merged$k10_NhCoord20_anno_new)
+#[1] "Bcell_Plasma"             "Endothelial"              "Tumor_Immune_Tcell_High" 
+#[4] "ap_iCAF_Immune_Mixed"     "Immune_Macrophage_High"   "myCAF_Immune_Mixed"      
+#[7] "CAFs"                     "Tumor_High"               "Myeloid_K17+_Tumor_Mixed"
+ 
+ myeloid_k17_tumor_mixed <- CosMX_RNA_merged[,CosMX_RNA_merged$k10_NhCoord20_anno_new == "Myeloid_K17_Tumor_Mixed"]
+ 
+ p1 <- DotPlot(myeloid_k17_tumor_mixed[,grep('Mon|Mac|DC', myeloid_k17_tumor_mixed$annot_cluster2)], features = c('IL16', 'IL11', 'CCL19', 'CCL21'), col.min = 0, cols = 'RdBu', split.by = 'Response', group.by = 'annot_cluster2')
+
+p2 <- DotPlot(myeloid_k17_tumor_mixed[,grep('CD4|CD8|Treg', myeloid_k17_tumor_mixed$annot_cluster2)], features = c('CCR7', 'CD4', 'IL11RA'), col.min = 0, cols = 'RdBu', split.by = 'Response', group.by = 'annot_cluster2')
+
+pdf('myeloid_k17_tumor_mixed_NH_IL_CCL_dotplot_by_response.pdf', width = 12, height = 4)
+cowplot::plot_grid(p1, p2)
+dev.off()
+
+
+p1 <- DotPlot(myeloid_k17_tumor_mixed[,grep('Mon|Mac|DC', myeloid_k17_tumor_mixed$annot_cluster2)], features = c('CXCL9', 'CXCL10', 'CXCL16'), col.min = 0, cols = 'RdBu', split.by = 'Response', group.by = 'annot_cluster2') 
+
+p2 <- DotPlot(myeloid_k17_tumor_mixed[,grep('CD4|CD8|Treg', myeloid_k17_tumor_mixed$annot_cluster2)], features = c('CXCR3', 'CXCR6'), col.min = 0, cols = 'RdBu', split.by = 'Response', group.by = 'annot_cluster2') 
+
+pdf('myeloid_k17_tumor_mixed_NH_CXCL_CCL_dotplot_by_response.pdf', width = 13, height = 4)
+cowplot::plot_grid(p1, p2)
+dev.off()
+
+p1 <- DotPlot(myeloid_k17_tumor_mixed[,grep('Mon|Mac|DC', myeloid_k17_tumor_mixed$annot_cluster2)], features = c('IL1B', 'CCL4', 'CCL3', 'CCL13'), col.min = 0, cols = 'RdBu', split.by = 'Response', group.by = 'annot_cluster2')
+
+p2 <- DotPlot(myeloid_k17_tumor_mixed[,grep('CD4|CD8|Treg', myeloid_k17_tumor_mixed$annot_cluster2)], features = c('IL1R1', 'IL1R2', 'CCR5', 'CCR1'), col.min = 0, cols = 'RdBu', split.by = 'Response', group.by = 'annot_cluster2')
+
+pdf('myeloid_k17_tumor_mixed_NH_IL_CCL_dotplot_by_response.pdf', width = 12, height = 4)
+cowplot::plot_grid(p1, p2)
+dev.off()
+
+immune_macrophage_high <- CosMX_RNA_merged[,CosMX_RNA_merged$k10_NhCoord20_anno_new == "Immune_Macrophage_High"]
+
+p1 <- DotPlot(immune_macrophage_high[,grep('Mon|Mac|DC', immune_macrophage_high$annot_cluster2)], features = c('IL1B', 'CCL4', 'CCL3', 'CCL13'), col.min = 0, cols = 'RdBu', split.by = 'Response', group.by = 'annot_cluster2')
+
+p2 <- DotPlot(immune_macrophage_high[,grep('CD4|CD8|Treg', immune_macrophage_high$annot_cluster2)], features = c('IL1R1', 'IL1R2', 'CCR5', 'CCR1'), col.min = 0, cols = 'RdBu', split.by = 'Response', group.by = 'annot_cluster2')
+
+pdf('immune_macrophage_high_NH_IL_CCL_dotplot_by_response.pdf', width = 12, height = 4)
+cowplot::plot_grid(p1, p2)
+dev.off()
+
+p1 <- DotPlot(immune_macrophage_high[,grep('Mon|Mac|DC', immune_macrophage_high$annot_cluster2)], features = c('CXCL9', 'CXCL10', 'CXCL16'), col.min = 0, cols = 'RdBu', split.by = 'Response', group.by = 'annot_cluster2') 
+
+p2 <- DotPlot(immune_macrophage_high[,grep('CD4|CD8|Treg', immune_macrophage_high$annot_cluster2)], features = c('CXCR3', 'CXCR6'), col.min = 0, cols = 'RdBu', split.by = 'Response', group.by = 'annot_cluster2') 
+
+pdf('immune_macrophage_high_NH_CXCL_CCL_dotplot_by_response.pdf', width = 13, height = 4)
+cowplot::plot_grid(p1, p2)
+dev.off()
+
+
+p1 <- DotPlot(immune_macrophage_high[,grep('Mon|Mac|DC', immune_macrophage_high$annot_cluster2)], features = c('CXCL9', 'CXCL10', 'CXCL16', 'CCL5'), col.min = 0, cols = 'RdBu', split.by = 'Response', group.by = 'annot_cluster2')
+
+p2 <- DotPlot(immune_macrophage_high[,grep('CD4|CD8|Treg', immune_macrophage_high$annot_cluster2)], features = c('CXCR3', 'CXCR6', 'CCR5'), col.min = 0, cols = 'RdBu', split.by = 'Response', group.by = 'annot_cluster2')
+
+pdf('immune_macrophage_high_NH_CXCL_CCL_dotplot_by_response.pdf', width = 14, height = 4)
+cowplot::plot_grid(p1, p2)
+dev.off()
+ 
+
+tumor_immune_tcell_high <- CosMX_RNA_merged[,CosMX_RNA_merged$k10_NhCoord20_anno_new == "Tumor_Immune_Tcell_High"]
+
+p1 <- DotPlot(tumor_immune_tcell_high[,grep('Mon|Mac|DC', tumor_immune_tcell_high$annot_cluster2)], features = c('CXCL9', 'CXCL10', 'CXCL16'), col.min = 0, cols = 'RdBu', split.by = 'Response', group.by = 'annot_cluster2') 
+
+p2 <- DotPlot(tumor_immune_tcell_high[,grep('CD4|CD8|Treg', tumor_immune_tcell_high$annot_cluster2)], features = c('CXCR3', 'CXCR6'), col.min = 0, cols = 'RdBu', split.by = 'Response', group.by = 'annot_cluster2') 
+
+pdf('tumor_immune_tcell_high_NH_CXCL_CCL_dotplot_by_response.pdf', width = 13, height = 4)
+cowplot::plot_grid(p1, p2)
+dev.off()
+
+p1 <- DotPlot(tumor_immune_tcell_high[,grep('Mon|Mac|DC', tumor_immune_tcell_high$annot_cluster2)], features = c('CXCL9', 'CXCL10', 'CXCL16', 'CCL5'), col.min = 0, cols = 'RdBu', split.by = 'Response', group.by = 'annot_cluster2')
+
+p2 <- DotPlot(tumor_immune_tcell_high[,grep('CD4|CD8|Treg', tumor_immune_tcell_high$annot_cluster2)], features = c('CXCR3', 'CXCR6', 'CCR5'), col.min = 0, cols = 'RdBu', split.by = 'Response', group.by = 'annot_cluster2')
+
+pdf('tumor_immune_tcell_high_NH_CXCL_CCL_dotplot_by_response.pdf', width = 14, height = 4)
+cowplot::plot_grid(p1, p2)
+dev.off()
+
+
+p1 <- DotPlot(tumor_immune_tcell_high[,grep('Mon|Mac|DC', tumor_immune_tcell_high$annot_cluster2)], features = c('IL16', 'IL11', 'CCL19', 'CCL21'), col.min = 0, cols = 'RdBu', split.by = 'Response', group.by = 'annot_cluster2')
+
+p2 <- DotPlot(tumor_immune_tcell_high[,grep('CD4|CD8|Treg', tumor_immune_tcell_high$annot_cluster2)], features = c('CCR7', 'CD4', 'IL11RA'), col.min = 0, cols = 'RdBu', split.by = 'Response', group.by = 'annot_cluster2')
+
+pdf('tumor_immune_tcell_high_NH_IL_CCL_dotplot_by_response.pdf', width = 12, height = 4)
+cowplot::plot_grid(p1, p2)
+dev.off()
+```
+
