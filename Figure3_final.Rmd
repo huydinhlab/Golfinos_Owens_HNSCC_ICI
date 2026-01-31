@@ -28,7 +28,10 @@ library(CellChat)
 library(patchwork)
 library(future)
 
-load("./CosMX_RNA_merged.rda")
+## Object load-in
+```{r}
+# loading in necessary objects
+```
 
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path)) 
 print(getwd())
