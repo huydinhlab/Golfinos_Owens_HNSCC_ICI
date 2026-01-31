@@ -39,14 +39,17 @@ color_clusters <- c("#DC050C", "#FB8072", "#1965B0", "#7BAFDE", "#882E72", "#B17
                     "#7570B3", "#BEAED4", "#666666", "#999999", "#AA8282", "#D4B7B7", "#8600BF", "#BA5CE3", 
                     "#808000","#AEAE5C", "#1E90FF", "#00BFFF", "#56FF0D", "#FFFF00")
 
-load('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/bill_luoma_consensus.rda')
-load("/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/CosMX_RNA_merged.rda")
-#meta_chemokines <- readxl::read_excel('/Volumes/hqdinh2/Lab Manuscripts/HNC_ICB_GolfinosOwens_etal_2025/CellChat/Barras_et_al_5CCI_metadata/Datafile_S7.xls', sheet = 'Chemokines')
+## Object load-in
+```{r}
+# loading in necessary objects
+```
+
+#meta_chemokines <- readxl::read_excel('HNC_ICB_GolfinosOwens_etal_2025/CellChat/Barras_et_al_5CCI_metadata/Datafile_S7.xls', sheet = 'Chemokines')
 
 ```
 
 ```{r Preparation--Running CellChat}
-out_dir <- "/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_cytokine"
+out_dir <- "/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_cytokine"
 
 
 # function to run CellChat
@@ -196,7 +199,7 @@ save(pre_cellchat, post_cellchat, r_pre_cellchat, nr_pre_cellchat, r_post_cellch
 ```
 
 ```{r Fig 2a--Pre-Tx Chord}
-load('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_cytokine/all_cellchat_objs.rda')
+load('Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_cytokine/all_cellchat_objs.rda')
 
 # keeping track of the subsets that we do/don't want to include
 send <- grep('Mac|Mon|DC', levels(pre_cellchat@idents$joint), value = T)
@@ -294,7 +297,7 @@ write.csv(chemokine_ints, file = 'chemokine_df.csv', row.names = F)
 
 
 # load in cellchat objects
-load('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_complement/all_cellchat_objs.rda')
+load('/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_complement/all_cellchat_objs.rda')
 
 # keeping track of the subsets that we do/don't want to include
 send <- grep('Mac|Mon|DC', levels(pre_cellchat@idents$joint), value = T)
@@ -389,7 +392,7 @@ write.csv(Complement_ints, file = 'complement_df.csv', row.names = F)
 
 
 # load in cellchat objects
-load('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_costim_coinhib/all_cellchat_objs.rda')
+load('/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_costim_coinhib/all_cellchat_objs.rda')
 
 # keeping track of the subsets that we do/don't want to include
 send <- grep('Mac|Mon|DC', levels(pre_cellchat@idents$joint), value = T)
@@ -486,7 +489,7 @@ write.csv(Costim_coinhib_ints, file = 'Costim_coinhib_df.csv', row.names = F)
 
 
 # load in cellchat objects
-load('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_interleukin/all_cellchat_objs.rda')
+load('/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_interleukin/all_cellchat_objs.rda')
 
 # keeping track of the subsets that we do/don't want to include
 send <- grep('Mac|Mon|DC', levels(pre_cellchat@idents$joint), value = T)
@@ -655,7 +658,7 @@ save(df, mat, df.groups, grid.col, group, sectors, Type_Cols,
 
 ```{r Fig 4a--Post-tx Circos plot}
 # load in cellchat objects
-load('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_cytokine/all_cellchat_objs.rda')
+load('/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_cytokine/all_cellchat_objs.rda')
 
 # keeping track of the subsets that we do/don't want to include
 send <- grep('Mac|Mon|DC', levels(post_cellchat@idents$joint), value = T)
@@ -751,7 +754,7 @@ write.csv(chemokine_ints, file = 'chemokine_df.csv', row.names = F)
 
 
 # load in cellchat objects
-load('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_complement/all_cellchat_objs.rda')
+load('/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_complement/all_cellchat_objs.rda')
 
 # keeping track of the subsets that we do/don't want to include
 send <- grep('Mac|Mon|DC', levels(post_cellchat@idents$joint), value = T)
@@ -848,7 +851,7 @@ write.csv(Complement_ints, file = 'complement_df.csv', row.names = F)
 
 
 # load in cellchat objects
-load('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_costim_coinhib/all_cellchat_objs.rda')
+load('/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_costim_coinhib/all_cellchat_objs.rda')
 
 # keeping track of the subsets that we do/don't want to include
 send <- grep('Mac|Mon|DC', levels(post_cellchat@idents$joint), value = T)
@@ -945,7 +948,7 @@ write.csv(Costim_coinhib_ints, file = 'Costim_coinhib_df.csv', row.names = F)
 
 
 # load in cellchat objects
-load('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_interleukin/all_cellchat_objs.rda')
+load('/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_interleukin/all_cellchat_objs.rda')
 
 # keeping track of the subsets that we do/don't want to include
 send <- grep('Mac|Mon|DC', levels(post_cellchat@idents$joint), value = T)
@@ -1115,7 +1118,7 @@ save(df, mat, df.groups, grid.col, group, sectors, Type_Cols,
 ```
 
 ```{r Fig 4b--rank plot (pre-treatment and post-treatment)}
-load('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_cytokine/all_cellchat_objs.rda')
+load('/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_cytokine/all_cellchat_objs.rda')
 
 # keeping track of the subsets that we do/don't want to include
 send <- grep('Mac|Mon|DC', levels(pre_cellchat@idents$joint), value = T)
@@ -1494,11 +1497,11 @@ for (entry in unique_entries) {
 ```{r Fig 4c--only myeloid senders!preparing pathway by probability dataframe for heatmap and plotting}
 # Define file paths
 files <- c(
-  '/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/NoSpatial_1NH_all_patients_per_response_immune_NHs_k10_NhCoord20_annoTumor_Immune_Mixed_workspace.rda',
-  '/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/NoSpatial_1NH_all_patients_per_response_immune_NHs_k10_NhCoord20_anno/Myeloid_K17_Tumor_Mixed_workspace.rda',
-  '/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/NoSpatial_1NH_all_patients_per_response_immune_NHs_k10_NhCoord20_anno/Macrophage_High_workspace.rda',
-  '/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/NoSpatial_1NH_all_patients_per_response_immune_NHs_k10_NhCoord20_anno/DC_T_iCAF_Tumor_Mixed_workspace.rda',
-  '/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/NoSpatial_1NH_all_patients_per_response_immune_NHs_k10_NhCoord20_anno/CAF_Immune_Mixed_workspace.rda'
+  '/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/NoSpatial_1NH_all_patients_per_response_immune_NHs_k10_NhCoord20_annoTumor_Immune_Mixed_workspace.rda',
+  '/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/NoSpatial_1NH_all_patients_per_response_immune_NHs_k10_NhCoord20_anno/Myeloid_K17_Tumor_Mixed_workspace.rda',
+  '/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/NoSpatial_1NH_all_patients_per_response_immune_NHs_k10_NhCoord20_anno/Macrophage_High_workspace.rda',
+  '/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/NoSpatial_1NH_all_patients_per_response_immune_NHs_k10_NhCoord20_anno/DC_T_iCAF_Tumor_Mixed_workspace.rda',
+  '/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/NoSpatial_1NH_all_patients_per_response_immune_NHs_k10_NhCoord20_anno/CAF_Immune_Mixed_workspace.rda'
 )
 
 # Function to load workspace and extract CellChat objects
