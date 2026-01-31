@@ -30,9 +30,9 @@ color_clusters <- c("#DC050C", "#FB8072", "#1965B0", "#7BAFDE", "#882E72", "#B17
                     "#666666", "#999999", "#AA8282", "#D4B7B7", "#8600BF", "#BA5CE3", 
                     "#808000","#AEAE5C", "#1E90FF", "#00BFFF", "#56FF0D", "#FFFF00")
 
-load("/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/CosMX_RNA_merged.rda")
-load("/Volumes/hqdinh2/Projects/2.HNC_SPORE_SingleCell_Spatial/CosMX_TMA/Protein-data/Analysis/CosMX_protein_annot_cluster.rda")
-#load("/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/CosMX_protein_annot_cluster.rda")
+## Object load-in
+```{r}
+# loading in necessary objects
 ```
 
 ## HNC ICB response manuscript
