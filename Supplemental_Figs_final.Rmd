@@ -25,9 +25,11 @@ print(getwd())
 ```
 
 ```{r Metadata add: Preparation for Cell Composition Heatmap--CosMx RNA Neighborhood Coordination}
-load("/Volumes/hqdinh2/Projects/2.HNC_SPORE_SingleCell_Spatial/CosMX_TMA/CosMX_RNA_merged.rda")
-
-rna_k10 <- read.csv('/Volumes/hqdinh2/Projects/HNC_SPORE/NeighborhoodCoordination/CosMx_RNA/Neighborhood_Coordination_CosMxRNA/WindowSize10/cells20neighborhoods.csv', row.names = 1) %>% 
+## Object load-in
+```{r}
+# loading in necessary objects
+```
+rna_k10 <- read.csv('NeighborhoodCoordination/CosMx_RNA/Neighborhood_Coordination_CosMxRNA/WindowSize10/cells20neighborhoods.csv', row.names = 1) %>% 
   select(c('neighborhood10'))
 colnames(rna_k10) <- 'k10_NhCoord20'
 
@@ -61,7 +63,7 @@ table(CosMX_RNA_merged$k10_NhCoord20_anno)
 #      Tumor_Immune_Mixed 
 #                   25680 
 
-save(CosMX_RNA_merged, file = '/Volumes/hqdinh2/Projects/HNC_SPORE/CosMX_TMA/CosMX_RNA_merged.rda')
+save(CosMX_RNA_merged, file = 'CosMX_TMA/CosMX_RNA_merged.rda')
 ```
 
 ```{r S1A--CosMx protein cell type frequency}
@@ -73,7 +75,7 @@ color_clusters <- c("#DC050C", "#FB8072", "#1965B0", "#7BAFDE", "#882E72", "#B17
                     "#808000","#AEAE5C", "#1E90FF", "#00BFFF", "#56FF0D", "#FFFF00")
 
 # adding protein neighborhoods to the CosMx protein data
-load("/Volumes/hqdinh2/Projects/2.HNC_SPORE_SingleCell_Spatial/CosMX_TMA/Protein-data/Analysis/CosMX_protein_annot_cluster.rda")
+load("CosMX_protein_annot_cluster.rda")
 
 CosMx_Protein_log_norm$merged_annot_cluster <- factor(CosMx_Protein_log_norm$merged_annot_cluster, 
                             levels=c("Tumor_cells",
@@ -273,7 +275,7 @@ test <- freq_plot(SEU = CosMx_Protein_log_norm,
 ```
 
 ```{r S1B -- CosMx protein recluster (leaving transferred clusters separately)}
-load("/Volumes/hqdinh2/Projects/2.HNC_SPORE_SingleCell_Spatial/CosMX_TMA/Protein-data/Analysis/CosMX_protein_annot_cluster.rda")
+load("CosMX_protein_annot_cluster.rda")
 DimPlot(CosMx_Protein_log_norm, group.by = 'merged_annot_cluster', raster = F)
 
 tumor_protein <- CosMx_Protein_log_norm[,grep('Tumor', CosMx_Protein_log_norm$merged_annot_cluster)]
@@ -526,7 +528,7 @@ ggsave('../Figure1/CosMx_Protein_DE_genes.pdf', width = 8, height = 5)
 
 ```{r S1C--CosMx RNA KRT genes Dotplot}
 # plotting the keratin genes in the RNA data
-load('/Volumes/hqdinh2/Projects/HNC_SPORE/CosMX_TMA/CosMX_RNA_merged.rda')
+load('CosMX_TMA/CosMX_RNA_merged.rda')
 
 DotPlot(CosMX_RNA_merged[,CosMX_RNA_merged$annot_cluster2 %in% c('Tumors_Others', 'Tumors_KRT19+',
                                                                  'Tumors_KRT17+', 'Tumors_HIF1A+')], 
@@ -539,7 +541,7 @@ ggsave('CosMx_RNA_KRT_genes_dotplot.pdf', width = 7, height = 4)
 
 ```{r S1D--CosMx RNA CAF dotplot/heatmap}
 # plotting the keratin genes in the RNA data
-load('/Volumes/hqdinh2/Projects/HNC_SPORE/CosMX_TMA/CosMX_RNA_merged.rda')
+load('CosMX_TMA/CosMX_RNA_merged.rda')
 
 hla <- grep('HLA', rownames(CosMX_RNA_merged), value = T)
 
@@ -571,7 +573,7 @@ ggsave('CosMx_RNA_CAF_genes_dotplot.pdf', width = 8, height = 4)
 ```
 
 ```{r S1D--CosMx RNA cell type frequency}
-load('/Volumes/hqdinh2/Projects/2.HNC_SPORE_SingleCell_Spatial/CosMX_TMA/CosMX_RNA_merged.rda')
+load('CosMX_RNA_merged.rda')
 
 color_clusters <- c("#DC050C", "#FB8072", "#1965B0", "#7BAFDE", "#882E72", "#B17BA6", 
                     "#FF7F00", "#FDB462", "#E7298A", "#E78AC3","#33A02C", "#B2DF8A", 
@@ -742,8 +744,8 @@ test <- freq_plot(SEU = CosMX_RNA_merged,
 ```
 
 ```{r S1E--CosMx protein/RNA cell type freq correlation WITH TUMOR CELLs}
-load("/Volumes/hqdinh2/Projects/HNC_SPORE/CosMX_TMA/CosMX_RNA_merged.rda")
-load("/Volumes/hqdinh2/Projects/HNC_SPORE/CosMX_TMA/Protein-data/Analysis/CosMX_protein_annot_cluster.rda")
+load("CosMX_TMA/CosMX_RNA_merged.rda")
+load("CosMX_TMA/Protein-data/Analysis/CosMX_protein_annot_cluster.rda")
 
 color_clusters <- c("#DC050C", "#FB8072", "#1965B0", "#7BAFDE", "#882E72", "#B17BA6", "#FF7F00", "#FDB462", 
                     "#E7298A", "#E78AC3", "#33A02C", "#B2DF8A", "#55A1B1", "#8DD3C7", "#A6761D", "#E6AB02", 
@@ -930,8 +932,8 @@ ggsave('cosmx_celltypecomparison_scatterplot.pdf', dpi = 900, width = 9, height 
 ```
 
 ```{r S1E--CosMx protein/RNA cell type freq correlation WITHout TUMOR CELLs}
-load("/Volumes/hqdinh2-2/Projects/2.HNC_SPORE_SingleCell_Spatial/CosMX_TMA/CosMX_RNA_merged.rda")
-load("/Volumes/hqdinh2-2/Projects/2.HNC_SPORE_SingleCell_Spatial/CosMX_TMA/Protein-data/Analysis/CosMX_protein_annot_cluster.rda")
+load("CosMX_RNA_merged.rda")
+load("Protein-data/Analysis/CosMX_protein_annot_cluster.rda")
 
 CosMX_RNA_merged <- CosMX_RNA_merged[,grep('Tumor', CosMX_RNA_merged$annot_cluster2, invert = T)]
 CosMx_Protein_log_norm <- CosMx_Protein_log_norm[,grep('Tumor', CosMx_Protein_log_norm$merged_annot_cluster, invert = T)]
@@ -1121,7 +1123,7 @@ ggsave('NOTUMORS_cosmx_celltypecomparison_scatterplot.pdf', dpi = 900, width = 9
 ```
 
 ```{r S1F--SCDC Broad cell type boxplot from Visium}
-scdc <- read.csv('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/SCDC_compartment_proportions.csv') %>% 
+scdc <- read.csv('HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/SCDC_compartment_proportions.csv') %>% 
   select(c(Cell_Type, Proportion, Sample_Name, Response))
 
 scdc <- scdc %>%
@@ -1180,7 +1182,7 @@ library(ggplot2)
 library(dplyr)
 library(DescTools)
 
-load('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/objects/bill_luoma_consensus.rda')
+load('HNC_ICB_GolfinosOwens_etal_2025/objects/bill_luoma_consensus.rda')
 
 luoma$consensus_clusters[luoma$consensus_clusters == c('Blood-like_CD14_Mono')] <- 'PBMC-like_CD14_Monocytes'
 
@@ -1335,8 +1337,8 @@ library(tibble)
 library(dplyr)
 
 # load in seurat objects
-load('/Volumes/hqdinh2/Lab Manuscripts/HNC_ICB_GolfinosOwens_etal_2025/objects/bill_luoma_consensus.rda')
-load('/Volumes/hqdinh2/Projects/HNC_SPORE/Seurat_Objs/HNC_human/cillo_all_cells.rda') # called hnc2
+load('/HNC_ICB_GolfinosOwens_etal_2025/objects/bill_luoma_consensus.rda')
+load('Seurat_Objs/HNC_human/cillo_all_cells.rda') # called hnc2
 
 
 # confiiguring ensembl due to expired certificates
@@ -1410,12 +1412,12 @@ library(tibble)
 library(dplyr)
 
 # load in seurat objects
-load('/Volumes/hqdinh2/Lab Manuscripts/HNC_ICB_GolfinosOwens_etal_2025/objects/bill_luoma_consensus.rda')
+load('/HNC_ICB_GolfinosOwens_etal_2025/objects/bill_luoma_consensus.rda')
 
 # confiiguring ensembl due to expired certificates
 httr::set_config(httr::config(ssl_verifypeer = FALSE)) 
 hs_tbl = ensemblToGo(species = 'hsapiens', GO_linkage_type = c('experimental', 'phylogenetic', 'computational', 'author', 'curator')) # get biological process GO terms
-setwd('/Volumes/hqdinh2/Lab Manuscripts/HNC_ICB_GolfinosOwens_etal_2025/scGOclust/cillo_luoma_consensus_clusters/')
+setwd('/HNC_ICB_GolfinosOwens_etal_2025/scGOclust/cillo_luoma_consensus_clusters/')
 
 # generating mini objects with just myeloid cells
 luoma_mini <- luoma[,grep('CD4|CD8|Treg|Tcells', luoma$consensus_clusters)]
@@ -1467,7 +1469,7 @@ dev.off()
 ```
 
 ```{r S2A--protein neighborhood heatmap (20 clusters)}
-load("/Volumes/hqdinh2/Projects/HNC_SPORE/CosMX_TMA/Protein-data/Analysis/CosMX_protein_annot_cluster.rda")
+load("CosMX_TMA/Protein-data/Analysis/CosMX_protein_annot_cluster.rda")
 
 # Create a table of cell counts
 cell_counts <- CosMx_Protein_log_norm@meta.data %>%
@@ -1557,7 +1559,7 @@ dev.off()
 ```
 
 ```{r S2B--RNA neighborhood heatmap (20 clusters)}
-load("/Volumes/hqdinh2/Projects/HNC_SPORE/CosMX_TMA/CosMX_RNA_merged.rda")
+load("CosMX_TMA/CosMX_RNA_merged.rda")
 
 CosMX_RNA_merged$annot_cluster2[grep('inflammatory', CosMX_RNA_merged$annot_cluster2)] <- 'Fibroblast_VEGFA_iCAFs'
 
@@ -1773,7 +1775,7 @@ ggsave(filename = '/Volumes/hqdinh2/Lab_Manuscripts/SUBMITTED_HNC_ICB_GolfinosOw
 ```
 
 ```{r S6A--Chemokine pathway rank plot (sender receiver only) with jitter}
-load('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma_cytokine/all_cellchat_objs.rda')
+load('HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma_cytokine/all_cellchat_objs.rda')
 
 # keeping track of the subsets that we do/don't want to include
 send <- grep('Mac|Mon|DC', levels(pre_cellchat@idents$joint), value = T)
@@ -1973,7 +1975,7 @@ dev.off()
 ```
 
 ```{r S6A--UpSet plot mregDC sender}
-load('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/all_cellchat_objs.rda')
+load('HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/all_cellchat_objs.rda')
 
 #combined upset plots
 create_combined_upset_plot <- function(cellchat, sender, target, group1, group2, desired_order, output_file) {
@@ -2120,7 +2122,7 @@ library(grid)
 library(dplyr)
 library(tidyr)
 
-load('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma_complement/all_cellchat_objs.rda')
+load('HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma_complement/all_cellchat_objs.rda')
 
 # keeping track of the subsets that we do/don't want to include
 send <- grep('Mac|Mon|DC', levels(pre_cellchat@idents$joint), value = T)
@@ -2405,7 +2407,7 @@ dev.off()
 ```
 
 ```{r S6B--UpSet plot Mac CXCL9 sender}
-load('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/all_cellchat_objs.rda')
+load('HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/all_cellchat_objs.rda')
 
 #combined upset plots
 create_combined_upset_plot <- function(cellchat, sender, target, group1, group2, desired_order, output_file) {
@@ -2547,7 +2549,7 @@ mac_pre <- create_combined_upset_plot(cellchat = pre.cellchat,
 ```
 
 ```{r S3C--Costim/Coinhib pathway rank plot (sender receiver only)}
-load('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma_costim_coinhib/all_cellchat_objs.rda')
+load('HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma_costim_coinhib/all_cellchat_objs.rda')
 
 # keeping track of the subsets that we do/don't want to include
 send <- grep('Mac|Mon|DC', levels(pre_cellchat@idents$joint), value = T)
@@ -2833,7 +2835,7 @@ dev.off()
 ```
 
 ```{r S6C--UpSet plot cDC1 sender}
-load('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/all_cellchat_objs.rda')
+load('HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/all_cellchat_objs.rda')
 
 #combined upset plots
 create_combined_upset_plot <- function(cellchat, sender, target, group1, group2, desired_order, output_file) {
@@ -2992,7 +2994,7 @@ setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 # Print the current working directory (optional, for verification) 
 print(getwd())
 
-load('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma_complement/all_cellchat_objs.rda')
+load('HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma_complement/all_cellchat_objs.rda')
 
 # keeping track of the subsets that we do/don't want to include
 send <- grep('Mac|Mon|DC', levels(pre_cellchat@idents$joint), value = T)
@@ -3228,7 +3230,7 @@ setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 # Print the current working directory (optional, for verification) 
 print(getwd())
 
-load('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma_costim_coinhib/all_cellchat_objs.rda')
+load('HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma_costim_coinhib/all_cellchat_objs.rda')
 
 # keeping track of the subsets that we do/don't want to include
 send <- grep('Mac|Mon|DC', levels(pre_cellchat@idents$joint), value = T)
@@ -3465,7 +3467,7 @@ setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 # Print the current working directory (optional, for verification) 
 print(getwd())
 
-load('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/CellChat_pairedonly/Luoma_cytokine/all_cellchat_objs.rda')
+load('HNC_ICB_GolfinosOwens_etal_2025/CellChat_pairedonly/Luoma_cytokine/all_cellchat_objs.rda')
 
 # keeping track of the subsets that we do/don't want to include
 send <- grep('Mac|Mon|DC', levels(pre_cellchat@idents$joint), value = T)
@@ -3704,7 +3706,7 @@ setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 # Print the current working directory (optional, for verification) 
 print(getwd())
 
-load('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/CellChat_pairedonly/Luoma_complement/all_cellchat_objs.rda')
+load('HNC_ICB_GolfinosOwens_etal_2025/CellChat_pairedonly/Luoma_complement/all_cellchat_objs.rda')
 
 # keeping track of the subsets that we do/don't want to include
 send <- grep('Mac|Mon|DC', levels(pre_cellchat@idents$joint), value = T)
@@ -3942,7 +3944,7 @@ setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 # Print the current working directory (optional, for verification) 
 print(getwd())
 
-load('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/CellChat_pairedonly/Luoma_costim_coinhib/all_cellchat_objs.rda')
+load('HNC_ICB_GolfinosOwens_etal_2025/CellChat_pairedonly/Luoma_costim_coinhib/all_cellchat_objs.rda')
 
 # keeping track of the subsets that we do/don't want to include
 send <- grep('Mac|Mon|DC', levels(pre_cellchat@idents$joint), value = T)
@@ -4161,7 +4163,7 @@ dev.off()
 ```
 
 ```{r S7F/G--DotPlots per neighborhood of LRs from 4C}
-load("/Volumes/hqdinh2/Projects/HNC_SPORE/CosMX_TMA/CosMX_RNA_merged.rda")
+load("CosMX_TMA/CosMX_RNA_merged.rda")
 
 CosMX_RNA_merged <- CosMX_RNA_merged %>%
   Seurat::AddMetaData(
@@ -4204,14 +4206,14 @@ dev.off()
 ```
 
 ```{r S5A--Full labeled rank plot}
-source('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/Scripts/LR_Rank_Functions.R')
+source('HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/Scripts/LR_Rank_Functions.R')
 
 # Load in list from calculation step and merge them into a single dataframe
-resultList <- readRDS(file = '/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/LR_boxplots/SCDC_LR_Comparison.rds')
+resultList <- readRDS(file = 'HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/LR_boxplots/SCDC_LR_Comparison.rds')
 allSamples <- do.call(rbind, args = resultList)
 allSamples$score <- as.numeric(allSamples$score)
 
-chemokineInteractions <- read.csv('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/ChemokineInteractions.csv')
+chemokineInteractions <- read.csv('HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/ChemokineInteractions.csv')
 
 # Filter to LR interactions with more than 2 samples per response group
 result <- allSamples %>% 
@@ -4272,7 +4274,7 @@ ggsave('allInts_SCDC_LR_rank_mean_difference_top_bottom.pdf', width = 12, height
 ```
 
 ```{r S5B/C--Highlighted R- and NR-enriched interactions from S5A}
-source('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/Scripts/LR_Rank_Functions.R')
+source('HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/Scripts/LR_Rank_Functions.R')
 
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path)) 
 
@@ -4280,7 +4282,7 @@ setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 print(getwd())
 
 #Load in list from calculation step and merge them into a single dataframe
-resultList<-readRDS(file = '/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/LR_boxplots/SCDC_LR_Comparison.rds')
+resultList<-readRDS(file = 'HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/LR_boxplots/SCDC_LR_Comparison.rds')
 allSamples<-do.call(rbind,args = resultList)
 allSamples$score=as.numeric(allSamples$score)
 
