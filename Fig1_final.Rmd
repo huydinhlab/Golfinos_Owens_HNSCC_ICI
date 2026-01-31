@@ -32,13 +32,6 @@ print(getwd())
 ## Object load-in
 ```{r}
 # loading in necessary objects
-load("/Volumes/hqdinh2/Projects/HNC_SPORE/CosMX_TMA/Protein-data/Analysis/CosMX_protein_annot_cluster.rda")
-load("/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/CosMX_RNA_merged.rda")
-load('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/8_Visium.rda')
-scdc <- read.csv('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/SCDC_compartment_proportions.csv') %>% 
-  select(c(Cell_Type, Proportion, Sample_Name, Response))
-load('/Volumes/hqdinh2/Projects/HNC_SPORE/Seurat_Objs/HNC_human/hnc_myeloid_2021.rda')
-load('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/objects/bill_luoma_consensus.rda')
 ```
 
 
