@@ -27,15 +27,15 @@ print(getwd())
 
 ```{r Fig 6a--CD68 and CD45 volcano plots by response }
 # Set working directory
-setwd("/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames")
+setwd("/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames")
 
 # Load annotation data (if needed later)
-ann_cd45 <- readxl::read_excel('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/inputs/GSE226134_CD45_10__norm (1).xlsx')
-ann_cd68 <- readxl::read_excel('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/inputs/GSE226134_CD68_10__norm.xlsx')
-ann_ck <- readxl::read_excel('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/inputs/GSE226134_CK_10__norm.xlsx')
+ann_cd45 <- readxl::read_excel('/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/inputs/GSE226134_CD45_10__norm (1).xlsx')
+ann_cd68 <- readxl::read_excel('/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/inputs/GSE226134_CD68_10__norm.xlsx')
+ann_ck <- readxl::read_excel('/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/inputs/GSE226134_CK_10__norm.xlsx')
 
 # Load GeoMx data
-t <- readRDS("/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/NanoStringGeoMxSet_objects/raw_Yale_geomx.RDS")
+t <- readRDS("/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/NanoStringGeoMxSet_objects/raw_Yale_geomx.RDS")
 e <- exprs(t)
 log <- log2(e+1)
 test <- fData(t)
@@ -147,15 +147,15 @@ dev.off()
 ```{r Fig 6b--ROI ID ONLY Yale GeoMx boxplot}
 
 # Set working directory
-setwd("/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames")
+setwd("/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames")
 
 # Load annotation data
-ann_cd45 <- readxl::read_excel('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/inputs/GSE226134_CD45_10__norm (1).xlsx')
-ann_cd68 <- readxl::read_excel('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/inputs/GSE226134_CD68_10__norm.xlsx')
-ann_ck <- readxl::read_excel('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/inputs/GSE226134_CK_10__norm.xlsx')
+ann_cd45 <- readxl::read_excel('/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/inputs/GSE226134_CD45_10__norm (1).xlsx')
+ann_cd68 <- readxl::read_excel('/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/inputs/GSE226134_CD68_10__norm.xlsx')
+ann_ck <- readxl::read_excel('/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/inputs/GSE226134_CK_10__norm.xlsx')
 
 # Load GeoMx data
-t <- readRDS("/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/NanoStringGeoMxSet_objects/raw_Yale_geomx.RDS")
+t <- readRDS("/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/NanoStringGeoMxSet_objects/raw_Yale_geomx.RDS")
 e <- exprs(t)
 log <- log2(e+1)
 test <- fData(t)
@@ -336,7 +336,7 @@ for (pair in lr_pairs) {
 
 ```{r Fig 6c--Cristescu/Litchfield}
 # Read and filter data
-litch <- readr::read_delim('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Using_Litchfield_Data/meta_analysis_input_data.txt')
+litch <- readr::read_delim('/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Using_Litchfield_Data/meta_analysis_input_data.txt')
 litch <- litch[litch$study == 'CRISTESCU_SCIENCE_2018' & litch$histology == 'HEAD AND NECK', ]
 
 # Reshape data for faceting
