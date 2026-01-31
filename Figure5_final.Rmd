@@ -27,10 +27,9 @@ library(ggalluvial)
 library(ggnewscale)
 
 # load in relevant workspaces
-load('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/all_cellchat_objs.rda')
-load('/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/bill_luoma_consensus.rda')
-workspace_files <- list.files("/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Luoma_individual_patients_workspaces", 
-                              pattern = "workspace\\.rda$", full.names = TRUE)
+## Object load-in
+```{r}
+# loading in necessary objects
 ```
 
 ```{r Preparation--running CellChat}
@@ -96,14 +95,14 @@ process_cellchat <- function(seu1, out, path_response, meta, tx_stage = NULL) {
 }
 
 
-nr_pre_cellchat <- process_cellchat(luoma, out = '/Volumes/hqdinh2/Lab Manuscripts/HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/', 
+nr_pre_cellchat <- process_cellchat(luoma, out = '/HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/', 
                                 meta = 'consensus_clusters', path_response = 'Non-responder', tx_stage = 'Pre-Tx')
-nr_post_cellchat <- process_cellchat(luoma, out = '/Volumes/hqdinh2/Lab Manuscripts/HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/', 
+nr_post_cellchat <- process_cellchat(luoma, out = '/HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/', 
                                 meta = 'consensus_clusters', path_response = 'Non-responder', tx_stage = 'Post-Tx')
 
-r_pre_cellchat <- process_cellchat(luoma, out = '/Volumes/hqdinh2/Lab Manuscripts/HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/', 
+r_pre_cellchat <- process_cellchat(luoma, out = '/HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/', 
                                 meta = 'consensus_clusters', path_response = 'Responder', tx_stage = 'Pre-Tx')
-r_post_cellchat <- process_cellchat(luoma, out = '/Volumes/hqdinh2/Lab Manuscripts/HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/', 
+r_post_cellchat <- process_cellchat(luoma, out = '/HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/', 
                                    meta = 'consensus_clusters', path_response = 'Responder', tx_stage = 'Post-Tx')
 
 
@@ -141,7 +140,7 @@ post.cellchat <- mergeCellChat(post.object.list, add.names = names(post.object.l
 
 
 #save(pre.cellchat, post.cellchat, r_pre_cellchat, nr_pre_cellchat, r_post_cellchat, nr_post_cellchat, pre.object.list, post.object.list, 
-#     file = '/Volumes/hqdinh2/Lab Manuscripts/HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/all_cellchat_objs.rda')
+#     file = '/HNC_ICB_GolfinosOwens_etal_2025/CellChat/Luoma/all_cellchat_objs.rda')
 
 ```
 
@@ -1604,7 +1603,7 @@ post.object.list <- list(NR = nr_post_cellchat, R = r_post_cellchat)
 post.cellchat <- mergeCellChat(post.object.list, add.names = names(post.object.list))
 
 #save(pre.cellchat, post.cellchat, r_pre_cellchat, nr_pre_cellchat, r_post_cellchat, nr_post_cellchat, pre.object.list, post.object.list, 
-#     file = '/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/individual_patients_all_cellchat_objs.rda')
+#     file = '/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/individual_patients_all_cellchat_objs.rda')
 
 ```
 
