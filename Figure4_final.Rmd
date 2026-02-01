@@ -21,278 +21,20 @@ print(getwd())
 ```
 
 ```{r Preparation--Data Preprocessing}
-#ck17_208 <- readRDS('/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Objects/ck17_208.rds')
-
-#ck17_12e6 <- readRDS('/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Objects/ck17_12e6.rds')
-
-#ck17_19 <- readRDS('/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Objects/ck17_19.rds')
-
-#ck17_1592 <- readRDS('/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Objects/ck17_1592.rds')
-
-#ck17_209 <- readRDS('/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Objects/ck17_209.rds')
-
-#ck17_25 <- readRDS('/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Objects/ck17_25.rds')
-
-#ck17_1294 <- readRDS('/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Objects/ck17_1294.rds')
-
-# old samples
-#ck17_5 <- readRDS('/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNCVisium_2022-05-05/CK17-5_analysis/Seurat_objs/ck17_5_08242023.RDS')
-
-#ck17_7 <- readRDS('/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNCVisium_2022-05-05/CK17-7_analysis/ck17_7_08242023.RDS')
-
-#ck17_21 <- readRDS('/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNCVisium_2022-05-05/CK17-21_analysis/ck17_21_08242023.RDS')
-
-#ck17_27 <- readRDS('/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNCVisium_2022-05-05/CK17-27_analysis/ck17_27_08242023.RDS')
-
-
-visium_pp <- function(in_dir, h5_name = "filtered_feature_bc_matrix.h5", out_dir){
-  
-  # attach required packages
-  require(ggplot2)
-  require(Seurat)
-  require(patchwork)
-  require(ggplot2)
-  require(hdf5r)
-  
-  
-  print("Creating log file")
-  sink(paste(out_dir, 'preprocessing_console_output.txt', sep = ''), append = T)
-  
-  cat('\nNEW ANALYSIS\n')
-  cat(paste('Date of analysis: ', Sys.Date(), "\n"))
-  cat(paste('Input directory: ', in_dir, "\n"))
-  cat(paste('H5 file name: ', h5_name, "\n"))
-  cat(paste("Output directory: ", out_dir, "\n"))
-  cat(paste("Normalization method: SCTransform \n"))
-  
-  print("Loading in h5 file and low resolution H&E Image")
-  
-  # load in the data
-  seu <- Seurat::Load10X_Spatial(data.dir = in_dir, filename = h5_name)
-  
-  # visualize the heterogeneity of coverage
-  plot1 <- VlnPlot(seu, features = "nCount_Spatial", pt.size = 0.1) + NoLegend()
-  plot2 <- SpatialFeaturePlot(seu, features = "nCount_Spatial") + theme(legend.position = "right")
-  print(wrap_plots(plot1, plot2))
-  
-  print("Normalizing data with SCTransform")
-  
-  # SC transform assumes NO ZERO COUNTS, so this step removes spots with zeroes if necessary
-  ncol_before <- ncol(seu)
-  seu=seu[,unname(which(colSums(GetAssayData(seu))!=0))]
-  ncol_after <- ncol(seu)
-  delta <- ncol_before - ncol_after
-  print(paste(delta, 'spots removed due to the presence of zeroes', sep = ''))
-  
-  # normalize with SCTransform
-  seu <- SCTransform(seu, assay = "Spatial", verbose = FALSE)
-  
-  print("Running PCA using 200 PCs. Please provide user input when prompted to select the number of PCs used for finding nearest neighbors. Choose a # of PCs right after the point where the plot flattens out")
-  
-  # run PCA using the SCT assay
-  seu <- RunPCA(seu, assay = "SCT", verbose = FALSE, npcs = 200)
-  print(ElbowPlot(seu, ndims = 200))
-  
-  # taking user input as to how many principal components to use 
-  npcs <- as.integer(readline("Enter the number of PCs to use: "))
-  
-  cat(paste("Number of PCs chosen by user: ", npcs, "\n"))
-  
-  # find nearest neighbors
-  seu <- FindNeighbors(seu, reduction = "pca", dims = 1:npcs)
-  
-  # finding clusters ranging from 0.1-3
-  for (x in seq.int(0.1, 3, by = 0.1)){
-      seu <- FindClusters(seu, resolution = x, verbose = FALSE)
-    }
-  
-  cat("Range of resolutions used for cluster identification: 0.1-3 (by 0.1)")
-  
-  # run UMAP
-  seu <- RunUMAP(seu, reduction = "pca", dims = 1:npcs)
-  
-  sink()
-  
-  return(seu)
-}
-
-
-# run in console
-ck17_27 <- visium_pp(in_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNCVisium_2022-05-05/CK17-27/outs/', out_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Outputs/Preprocessing/CK17_27')
-
-
-# run in console
-ck17_21 <- visium_pp(in_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNCVisium_2022-05-05/CK17-21/outs/', out_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Outputs/Preprocessing/CK17_21')
-
-
-# run in console
-ck17_7 <- visium_pp(in_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNCVisium_2022-05-05/CK17-7/outs/', out_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Outputs/Preprocessing/CK17_7')
-
-
-# run in console
-ck17_5 <- visium_pp(in_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNCVisium_2022-05-05/CK17-5/outs/', out_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Outputs/Preprocessing/CK17_5')
-
-
-# run in console
-ck17_1294 <- visium_pp(in_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/SpaceRanger_outputs/CK17-129-4/outs/', out_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Outputs/Preprocessing/CK17_129_4')
-
-
-# run in console
-ck17_1592 <- visium_pp(in_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/SpaceRanger_outputs/CK17-159-2/outs/', out_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Outputs/Preprocessing/CK17_159_2')
-
-
-# run in console
-ck17_25 <- visium_pp(in_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/SpaceRanger_outputs/CK17-25/outs/', out_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Outputs/Preprocessing/CK17_25')
-
-
-# run in console
-ck17_12e6 <- visium_pp(in_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/SpaceRanger_outputs/CK17-12-E6/outs/', out_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Outputs/Preprocessing/CK17_12_E6')
-
-
-# run in console
-ck17_209 <- visium_pp(in_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/SpaceRanger_outputs/CK17-209/outs/', out_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Outputs/Preprocessing/CK17_209')
-
-
-# run in console
-ck17_19 <- visium_pp(in_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/SpaceRanger_outputs/CK17-19/outs/', out_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Outputs/Preprocessing/CK17_19')
-
-
-# run in console
-ck17_208 <- visium_pp(in_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/SpaceRanger_outputs/CK17-208/outs/', out_dir = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Outputs/Preprocessing/CK17_208')
-
-
-# adding in response metrics
-ck17_7$ici_response <- 'NR'
-ck17_19$ici_response <- 'NR'
-ck17_25$ici_response <- 'R'
-ck17_208$ici_response <- 'NR'
-ck17_1294$ici_response <- 'R'
-ck17_1592$ici_response <- 'R'
-ck17_209$ici_response <- 'R'
-ck17_5$ici_response <- 'R'
-ck17_7$ici_response <- 'NR'
-ck17_21$ici_response <- 'NR'
-ck17_27$ici_response <- 'R'
-ck17_12e6$ici_response <- 'NR'
-
-save(ck17_1294, ck17_12e6, ck17_1592, ck17_19, ck17_208, ck17_209, ck17_21, ck17_25, ck17_27, ck17_5, ck17_7, file = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Objects/HNC_11Visium.rda')
+## Object load-in
+```{r}
+# loading in necessary objects
 ```
 
-```{r Preparation--SCDC deconvolution}
-scdc_decon <- function(sc_ref, st_query, sc_meta, calculate_markers = FALSE, markers_sc, out){
-  
-  # load in required packages
-  require(Seurat)
-  require(SCDC)
-  require(dplyr)
-  require(Biobase)
-  require(data.table)
-
-  # setting scRNA-seq clusters based on the metadata
-  Idents(sc_ref) <- sc_meta
-  
-  if (isTRUE(calculate_markers)){
-    print(paste('Now identifying markers for each cluster within the ', sc_meta, "metadata slot within your single cell Seurat object", sep = ''))
-  
-  # identifying all clusters
-    markers_sc <- FindAllMarkers(sc_ref)
-  }
-  
-  
-  # Filter for genes that are also present in the ST data
-  markers_sc <- markers_sc[markers_sc$gene %in% rownames(st_query), ]
-  
-  # Select top 20 genes per cluster, select top by first p-value, then absolute
-  # diff in pct, then quota of pct.
-  markers_sc$pct.diff <- markers_sc$pct.1 - markers_sc$pct.2
-  markers_sc$log.pct.diff <- log2((markers_sc$pct.1 * 99 + 1)/(markers_sc$pct.2 * 99 + 1))
-  markers_sc %>% dplyr::group_by(cluster) %>% dplyr::top_n(-100, p_val) %>%
-      dplyr::top_n(50, pct.diff) %>% dplyr::top_n(20, log.pct.diff) -> top20
-  m_feats <- unique(as.character(top20$gene))
-  
-  eset_SC <- ExpressionSet(assayData = as.matrix(sc_ref@assays$RNA@counts[m_feats,
-      ]), phenoData = AnnotatedDataFrame(sc_ref@meta.data))
-  eset_ST <- ExpressionSet(assayData = as.matrix(st_query@assays$Spatial@counts[m_feats,
-      ]), phenoData = AnnotatedDataFrame(st_query@meta.data))
-  
-  print('Now running the deconvolution step')
-  
-  #running deconvolution
-  deconvolution <- SCDC::SCDC_prop(bulk.eset = eset_ST, sc.eset = eset_SC, ct.varname = sc_meta, ct.sub = as.character(unique(eset_SC[[sc_meta]])))
-  
-  
-  # now adding deconvolution output and adding it to the Seurat object as a new assay
-  st_query@assays[['SCDC']] <- SeuratObject::CreateAssayObject(data = t(deconvolution$prop.est.mvw))
-  
-  if (length(st_query@assays$SCDC@key) == 0) {
-      st_query@assays$SCDC@key = "scdc_"
-  }
-  
-  DefaultAssay(st_query) <- 'SCDC'
-  
-  print('SV Features Found')
-  
-  #Seurat::SpatialPlot(st_query_test, feature = c('CD4-1', 'CD8-2', 'Treg-1'))
-  
-  path <- paste(out, 'SCDC_deconvolution_', Sys.Date())
-  dir.create(path)
-
-  print(paste('Now saving your spatial seurat object and workspace image to ', path, sep = ''))
-  
-  saveRDS(st_query, paste(path, '/SCDC_deconvolution_', sc_meta, '_', Sys.Date(), '.RDS', sep = ''))
-  
-  save(sc_ref, st_query, markers_sc, eset_SC, eset_ST, file = paste(path, '/Workspace_Image_SCDC_deconvolution_', sc_meta, '_', Sys.Date(), '.rda', sep = ''))
-  
-  return(st_query)
-}
-
-cillo_kurten <- readRDS('/Volumes/hqdinh2/Projects/HNC_SPORE/Seurat_Objs/HNC_human/cillo_kurten_11152022.RDS')
-
-#deconvoluting using our single cell data
-hnc_til <- cillo_kurten[,!cillo_kurten$tissue %in% c('PBMC', 'Tonsil')]
-rm(cillo_kurten)
-hnc_til <- hnc_til[,!hnc_til$mreg_cxcl9_globalcluster4 %in% c('KRT17+', 'Immature_Myeloids', 'Macrophages', 'DCs', 'pDC', 'CD4', 'CD8')]
-
-Idents(hnc_til) <- hnc_til$decon.clusters
-
-ck_markers <- FindAllMarkers(hnc_til)
-
-load(file = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Inputs/SCDC_decon/SCDC_inputs_09012023.rda')
-
-# ck17-208 decon using global.cluster meatdata
-ck17_208 <- scdc_decon(sc_ref = hnc_til, st_query = ck17_208, sc_meta = 'decon.clusters', out = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Outputs/SCDC_decon/CK17_208', calculate_markers = F, markers_sc = ck_markers)
-
- # CK17-12E6 decon using global.cluster metadata
-ck17_12e6 <- scdc_decon(sc_ref = hnc_til, st_query = ck17_12e6, sc_meta = 'decon.clusters', out = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Outputs/SCDC_decon/', calculate_markers = F, markers_sc = ck_markers)
-
-# CK17-19 decon using global.cluster metadata
-ck17_19 <- scdc_decon(sc_ref = hnc_til, st_query = ck17_19, sc_meta = 'decon.clusters', out = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Outputs/SCDC_decon/ck17_19', calculate_markers = F, markers_sc = ck_markers)
-
-# ck17-209 decon using global.cluster meatdata
-ck17_209 <- scdc_decon(sc_ref = hnc_til, st_query = ck17_209, sc_meta = 'decon.clusters', out = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Outputs/SCDC_decon/CK17_209', calculate_markers = F, markers_sc = ck_markers)
-
-# ck17-25 decon using global.cluster meatdata
-ck17_25 <- scdc_decon(sc_ref = hnc_til, st_query = ck17_25, sc_meta = 'decon.clusters', out = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Outputs/SCDC_decon/CK17_25', calculate_markers = F, markers_sc = ck_markers)
-
-# ck17-27 decon using global.cluster meatdata
-ck17_27 <- scdc_decon(sc_ref = hnc_til, st_query = ck17_27, sc_meta = 'decon.clusters', out = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Outputs/SCDC_decon/CK17_27', calculate_markers = F, markers_sc = ck_markers)
-
-# ck17-1294 decon using global.cluster meatdata
-ck17_1294 <- scdc_decon(sc_ref = hnc_til, st_query = ck17_1294, sc_meta = 'decon.clusters', out = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Outputs/SCDC_decon/CK17_1294', calculate_markers = F, markers_sc = ck_markers)
-
-# ck17-1592 decon using global.cluster meatdata
-ck17_1592 <- scdc_decon(sc_ref = hnc_til, st_query = ck17_1592, sc_meta = 'decon.clusters', out = '/Volumes/hqdinh2/Projects/RawData_FromUWBiotech/HNC_vulva_Visium_2023-08-25/Analyses/Outputs/SCDC_decon/CK17_1592', calculate_markers = F, markers_sc = ck_markers)
-```
-
-```{r Fig 5b--rank plot}
-source('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/Scripts/LR_Rank_Functions.R')
+```{r Fig 5a--rank plot}
+source('HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/Scripts/LR_Rank_Functions.R')
 
 # Load in list from calculation step and merge them into a single dataframe
-resultList <- readRDS(file = '/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/LR_boxplots/SCDC_LR_Comparison.rds')
+resultList <- readRDS(file = 'HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/LR_boxplots/SCDC_LR_Comparison.rds')
 allSamples <- do.call(rbind, args = resultList)
 allSamples$score <- as.numeric(allSamples$score)
 
-chemokineInteractions <- read.csv('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/ChemokineInteractions.csv')
+chemokineInteractions <- read.csv('HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/ChemokineInteractions.csv')
 
 # Filter to LR interactions with more than 2 samples per response group
 result <- allSamples %>% 
@@ -385,7 +127,7 @@ dev.off()
 ```
 
 ```{r Fig 5c--score by patient boxplot}
-source('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/Scripts/LR_Rank_Functions.R')
+source('HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/Scripts/LR_Rank_Functions.R')
 
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path)) 
 
@@ -401,10 +143,10 @@ seurat_list=list(ck17_1294=ck17_1294,
                  ck17_5=ck17_5,
                  ck17_7=ck17_7)
 
-SCDC_ComparmentDeconvolution<-read.csv('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/SCDC_compartment_proportions.csv',row.names = 1)
+SCDC_ComparmentDeconvolution<-read.csv('HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/SCDC_compartment_proportions.csv',row.names = 1)
 SCDCPivot<-SCDC_ComparmentDeconvolution%>%pivot_wider(id_cols=c(Barcode,Sample_Name,Response),names_from = Cell_Type,values_from = Proportion)
 pivot_Filtered=SCDCPivot%>%filter(!Sample_Name %in% c('ck17_27','ck17_21'))
-cellchat_pairs <- read.csv('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/Reference/cellchat_LR_pairs.csv')
+cellchat_pairs <- read.csv('HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/Reference/cellchat_LR_pairs.csv')
 ligands = cellchat_pairs$ligand
 receptors = cellchat_pairs$receptor
 
@@ -418,14 +160,14 @@ for (n in names(seurat_list)){
   i<-i+1
 }
 names(resultList)<-names(seurat_list)
-saveRDS(resultList,file = '/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/LR_boxplots/SCDC_LR_Comparison.rds')
+saveRDS(resultList,file = 'HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/LR_boxplots/SCDC_LR_Comparison.rds')
 
 #Load in list from calculation step and merge them into a single dataframe
-resultList<-readRDS(file = '/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/LR_boxplots/SCDC_LR_Comparison.rds')
+resultList<-readRDS(file = 'HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/LR_boxplots/SCDC_LR_Comparison.rds')
 allSamples<-do.call(rbind,args = resultList)
 allSamples$score=as.numeric(allSamples$score)
 
-chemokineInteractions<-read.csv('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/ChemokineInteractions.csv')
+chemokineInteractions<-read.csv('HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/ChemokineInteractions.csv')
 
 #Filter to LR interactions with more than 2 samples per response group
 result <- allSamples %>% 
@@ -514,7 +256,7 @@ dev.off()
 ```
 
 ```{r Fig 5d--SpatialFeaturePlots}
-load('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/objects/11_Visium.rda')
+load('HNC_ICB_GolfinosOwens_etal_2025/objects/11_Visium.rda')
 
 SpatialFeaturePlot(ck17_5, features = c('CXCL9', 'CXCL10', 'CXCR3'), pt.size.factor = 2500, keep.scale = 'all')
 ggsave('ck17_5_SpatialFeaturePlot_CXCL9_CXCL10_CXCR3.pdf')
@@ -530,8 +272,8 @@ ggsave('ck17_7_SpatialFeaturePlot_CXCL16_CXCR6.pdf')
 ```
 
 ```{r Fig 5e--Score plots}
-ck17_5 <- readRDS('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/objects/ck17_5_perspotScore.rds')
-ck17_7 <- readRDS('/Volumes/hqdinh2/Lab_Manuscripts/INPREP_HNC_ICB_GolfinosOwens_etal_2025/objects/ck17_7_perspotScore.rds')
+ck17_5 <- readRDS('HNC_ICB_GolfinosOwens_etal_2025/objects/ck17_5_perspotScore.rds')
+ck17_7 <- readRDS('HNC_ICB_GolfinosOwens_etal_2025/objects/ck17_7_perspotScore.rds')
 
 SpatialFeaturePlot(ck17_5, features = c('CXCL9-CXCR3_nhScore', 'CXCL10-CXCR3_nhScore', 'CXCL16-CXCR6_nhScore'), pt.size.factor = 2500, keep.scale = 'all')
 ggsave('ck17_5_SpatialFeaturePlot_SCORE_CXCL9_CXCL10_CXCR3_CXCL16_CXCR6.pdf', width = 12)
