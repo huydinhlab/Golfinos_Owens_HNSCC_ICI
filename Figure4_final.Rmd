@@ -26,7 +26,7 @@ print(getwd())
 # loading in necessary objects
 ```
 
-```{r Fig 5a--rank plot}
+```{r Fig 5b--rank plot}
 source('HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/Scripts/LR_Rank_Functions.R')
 
 # Load in list from calculation step and merge them into a single dataframe
@@ -89,15 +89,6 @@ ggplot(data = rankplot,
 
 ggsave('allInts_SCDC_LR_rank_mean_difference.pdf', width = 12, height = 8)
 
-
-
-
-
-
-
-
-
-
 # chemokine only plot
 rankplot_chemokine<-rankplot%>%filter(LR_pair %in% chemokineInteractions$pair)
 rankplot_chemokine<-rankplot_chemokine%>%mutate(rank=rank(desc(mean_diff)))%>%mutate(label=case_when(rank<=10~LR_pair,
@@ -131,6 +122,29 @@ source('HNC_ICB_GolfinosOwens_etal_2025/Visium_figures/Scripts/LR_Rank_Functions
 
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path)) 
 
+SpatialFeaturePlot(ck17_5, features = c('CXCL9', 'CXCL10', 'CXCR3'), pt.size.factor = 2500, keep.scale = 'all')
+ggsave('ck17_5_SpatialFeaturePlot_CXCL9_CXCL10_CXCR3.pdf')
+
+SpatialFeaturePlot(ck17_7, features = c('CXCL9', 'CXCL10', 'CXCR3'), pt.size.factor = 2500, keep.scale = 'all')
+ggsave('ck17_7_SpatialFeaturePlot_CXCL9_CXCL10_CXCR3.pdf')
+
+SpatialFeaturePlot(ck17_5, features = c('CXCL16', 'CXCR6'), pt.size.factor = 2500, keep.scale = 'all')
+ggsave('ck17_5_SpatialFeaturePlot_CXCL16_CXCR6.pdf')
+
+SpatialFeaturePlot(ck17_7, features = c('CXCL16', 'CXCR6'), pt.size.factor = 2500, keep.scale = 'all')
+ggsave('ck17_7_SpatialFeaturePlot_CXCL16_CXCR6.pdf')
+```
+
+ck17_5 <- readRDS('HNC_ICB_GolfinosOwens_etal_2025/objects/ck17_5_perspotScore.rds')
+ck17_7 <- readRDS('HNC_ICB_GolfinosOwens_etal_2025/objects/ck17_7_perspotScore.rds')
+
+SpatialFeaturePlot(ck17_5, features = c('CXCL9-CXCR3_nhScore', 'CXCL10-CXCR3_nhScore', 'CXCL16-CXCR6_nhScore'), pt.size.factor = 2500, keep.scale = 'all')
+ggsave('ck17_5_SpatialFeaturePlot_SCORE_CXCL9_CXCL10_CXCR3_CXCL16_CXCR6.pdf', width = 12)
+
+SpatialFeaturePlot(ck17_7, features = c('CXCL9-CXCR3_nhScore', 'CXCL10-CXCR3_nhScore', 'CXCL16-CXCR6_nhScore'), pt.size.factor = 2500, keep.scale = 'all')
+ggsave('ck17_7_SpatialFeaturePlot_SCORE_CXCL9_CXCL10_CXCR3_CXCL16_CXCR6.pdf', width = 12)
+
+
 # Print the current working directory (optional, for verification) 
 print(getwd())
 seurat_list=list(ck17_1294=ck17_1294,
@@ -138,7 +152,6 @@ seurat_list=list(ck17_1294=ck17_1294,
                  ck17_1592=ck17_1592,
                  ck17_19=ck17_19,
                  ck17_208=ck17_208,
-                 ck17_209=ck17_209,
                  ck17_25=ck17_25,
                  ck17_5=ck17_5,
                  ck17_7=ck17_7)
@@ -187,7 +200,7 @@ result <- allSamples %>%
 
 
 
-g1 <- ggplot(data = allSamples%>%filter(LR_pair=='CXCL9_CXCR3',sample_id!='ck17_209'),aes(x=response,y=score,fill=response, color=response), alpha = 0.5) + 
+g1 <- ggplot(data = allSamples%>%filter(LR_pair=='CXCL9_CXCR3'),aes(x=response,y=score,fill=response, color=response), alpha = 0.5) + 
   geom_boxplot(aes(x=response,y=score,fill=response, color=response), alpha = 0.5, outlier.size = 0) + 
   geom_jitter() + stat_compare_means() + 
   facet_wrap(~LR_pair) +
@@ -208,7 +221,7 @@ g1 <- ggplot(data = allSamples%>%filter(LR_pair=='CXCL9_CXCR3',sample_id!='ck17_
   scale_color_manual(values = c('#2196F3', '#FF8A80')) +
   ylab('Proportion of LR spots among CD45+ spots')+xlab('ICB Response')
 
-g2 <- ggplot(data = allSamples%>%filter(LR_pair=='CXCL10_CXCR3',sample_id!='ck17_209'),aes(x=response,y=score,fill=response, color=response), alpha = 0.5) + 
+g2 <- ggplot(data = allSamples%>%filter(LR_pair=='CXCL10_CXCR3'),aes(x=response,y=score,fill=response, color=response), alpha = 0.5) + 
   geom_boxplot(aes(x=response,y=score,fill=response, color=response), alpha = 0.5, outlier.size = 0) + 
   geom_jitter() + stat_compare_means() + 
   facet_wrap(~LR_pair) +
@@ -229,7 +242,7 @@ g2 <- ggplot(data = allSamples%>%filter(LR_pair=='CXCL10_CXCR3',sample_id!='ck17
   scale_color_manual(values = c('#2196F3', '#FF8A80')) +
   ylab('Proportion of LR spots among CD45+ spots')+xlab('ICB Response')
 
-g3 <- ggplot(data = allSamples%>%filter(LR_pair=='CXCL16_CXCR6',sample_id!='ck17_209'),aes(x=response,y=score,fill=response, color=response), alpha = 0.5) + 
+g3 <- ggplot(data = allSamples%>%filter(LR_pair=='CXCL16_CXCR6'),aes(x=response,y=score,fill=response, color=response), alpha = 0.5) + 
   geom_boxplot(aes(x=response,y=score,fill=response, color=response), alpha = 0.5, outlier.size = 0) + 
   geom_jitter() + stat_compare_means() + 
   geom_point(aes(x=response,y=score,fill=response, color=response), alpha = 0.8) +
@@ -253,32 +266,5 @@ g3 <- ggplot(data = allSamples%>%filter(LR_pair=='CXCL16_CXCR6',sample_id!='ck17
 pdf('CXCL9_10_CXCR3_CXCL16_CXCR6_prop_LRposCD45pos_spots.pdf', width = 7, height = 4)
 cowplot::plot_grid(g1, g2, g3, nrow = 1)
 dev.off()
-```
-
-```{r Fig 5d--SpatialFeaturePlots}
-load('HNC_ICB_GolfinosOwens_etal_2025/objects/11_Visium.rda')
-
-SpatialFeaturePlot(ck17_5, features = c('CXCL9', 'CXCL10', 'CXCR3'), pt.size.factor = 2500, keep.scale = 'all')
-ggsave('ck17_5_SpatialFeaturePlot_CXCL9_CXCL10_CXCR3.pdf')
-
-SpatialFeaturePlot(ck17_7, features = c('CXCL9', 'CXCL10', 'CXCR3'), pt.size.factor = 2500, keep.scale = 'all')
-ggsave('ck17_7_SpatialFeaturePlot_CXCL9_CXCL10_CXCR3.pdf')
-
-SpatialFeaturePlot(ck17_5, features = c('CXCL16', 'CXCR6'), pt.size.factor = 2500, keep.scale = 'all')
-ggsave('ck17_5_SpatialFeaturePlot_CXCL16_CXCR6.pdf')
-
-SpatialFeaturePlot(ck17_7, features = c('CXCL16', 'CXCR6'), pt.size.factor = 2500, keep.scale = 'all')
-ggsave('ck17_7_SpatialFeaturePlot_CXCL16_CXCR6.pdf')
-```
-
-```{r Fig 5e--Score plots}
-ck17_5 <- readRDS('HNC_ICB_GolfinosOwens_etal_2025/objects/ck17_5_perspotScore.rds')
-ck17_7 <- readRDS('HNC_ICB_GolfinosOwens_etal_2025/objects/ck17_7_perspotScore.rds')
-
-SpatialFeaturePlot(ck17_5, features = c('CXCL9-CXCR3_nhScore', 'CXCL10-CXCR3_nhScore', 'CXCL16-CXCR6_nhScore'), pt.size.factor = 2500, keep.scale = 'all')
-ggsave('ck17_5_SpatialFeaturePlot_SCORE_CXCL9_CXCL10_CXCR3_CXCL16_CXCR6.pdf', width = 12)
-
-SpatialFeaturePlot(ck17_7, features = c('CXCL9-CXCR3_nhScore', 'CXCL10-CXCR3_nhScore', 'CXCL16-CXCR6_nhScore'), pt.size.factor = 2500, keep.scale = 'all')
-ggsave('ck17_7_SpatialFeaturePlot_SCORE_CXCL9_CXCL10_CXCR3_CXCL16_CXCR6.pdf', width = 12)
 ```
 
