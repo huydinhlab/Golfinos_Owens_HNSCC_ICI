@@ -41,7 +41,7 @@ color_clusters <- c("#DC050C", "#FB8072", "#1965B0", "#7BAFDE", "#882E72", "#B17
 ```{r prep for Fig 2a--Neighborhood Coordination for CosMx protein data}
 # pre-running the Neighborhood Coordination script 
 ni.input <- CosMx_Protein_log_norm[[c('x_FOV_px', 'y_FOV_px', 'tma_fov_id', 'Patient.ID', 'Response', 'merged_annot_cluster')]]
-write.csv(ni.input, file = '/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Protein_ni.input.csv')
+write.csv(ni.input, file = '/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/Protein_ni.input.csv')
 ```
 
 ```{r Fig 2a--protein neighborhood heatmap}
@@ -392,7 +392,7 @@ ggsave(paste('Protein_Immune_High_NR', 'FOV_plotting.pdf', sep = '_'), width = 1
 
 ```{r prep for Fig 2d--Neighborhood Coordination input prep}
 ni.input <- CosMX_RNA_merged[[c('x_pixel', 'y_pixel', 'tma_fov_id', 'PatientID', 'Response', 'annot_cluster2')]]
-write.csv(ni.input, file = '/Volumes/hqdinh2/Projects/!GEO_Dryad_Submissions/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/RNA_ni.input.csv')
+write.csv(ni.input, file = '/Golfinos_Owen_et_al_HNSCC_ICI/SeuratObjects_dataFrames/RNA_ni.input.csv')
 ```
 
 ```{r Fig 2c--RNA neighborhood heatmap}
